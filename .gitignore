@@ -1,3 +1,12 @@
+# Ignorar dados de entrada 
+DadosTermoeletricas/inputs/
+
+# Ignorar saídas e resultados 
+DadosTermoeletricas/outputs/
+
+# Ignorar figuras e gráficos 
+DadosTermoeletricas/figures/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
