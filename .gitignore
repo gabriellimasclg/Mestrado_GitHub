@@ -1,11 +1,17 @@
 # Ignorar dados de entrada 
-DadosTermoeletricas/inputs/
+001.2026 - DadosTermoeletricas/inputs/
+002.2026 - MaioresEmissoresParaDesagregação/inputs/
+003.2026 - DesagregacaoSIDRA8885/inputs/
 
 # Ignorar saídas e resultados 
-DadosTermoeletricas/outputs/
+001.2026 - DadosTermoeletricas/outputs/
+002.2026 - MaioresEmissoresParaDesagregação/outputs/
+003.2026 - DesagregacaoSIDRA8885/outputs/
 
 # Ignorar figuras e gráficos 
-DadosTermoeletricas/figures/
+001.2026 - DadosTermoeletricas/figures/
+002.2026 - MaioresEmissoresParaDesagregação/figures/
+003.2026 - DesagregacaoSIDRA8885/figures/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
