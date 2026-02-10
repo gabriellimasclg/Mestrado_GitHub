@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-“Foram elaborados fatores de desagregação temporal diário, semanal, mensal e
+Foram elaborados fatores de desagregação temporal diário, semanal, mensal e
 horário, a partir da normalização anual da geração elétrica, preservando a
-massa anual e refletindo o perfil operacional das usinas termelétricas.”
+massa anual e refletindo o perfil operacional das usinas termelétricas.
+
+Fonte dos CSVs: https://dados.ons.org.br/dataset/geracao-usina-2
 """
 #Importando os pacotes
 
@@ -15,7 +17,7 @@ import os
 #%% organizando o dado em escala horária
 
 # Caminho para os arquivos CSV
-path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\DadosTermoeletricas\inputs\dados'
+path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\001.2026 - DadosTermoeletricas\inputs\dados'
 files = glob.glob(os.path.join(path, "*.csv"))
 
 # Lista para armazenar os DataFrames
@@ -202,7 +204,7 @@ print(df_mensal.groupby('ano')['fator_mensal'].sum())
 import os
 
 # pasta de saída
-output_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\DadosTermoeletricas\outputs\fatores'
+output_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\001.2026 - DadosTermoeletricas\outputs\fatoresTermo'
 os.makedirs(output_path, exist_ok=True)
 
 # =========================
@@ -236,6 +238,37 @@ df_mensal.to_csv(
     os.path.join(output_path, 'fator_desagregacao_mensal_completo.csv'),
     index=False
 )
+
+#%% calcular media, p05, p95 e mediaRelativa dos fatores de desagregação horário
+
+#
+df_hora['horario'] = df_hora['hora'].dt.hour
+
+# Agrupa calculando média, percentil 5 e percentil 95
+df_hora_agrupado = df_hora.groupby('horario')['fator_horario'].agg(
+    fator_horario='mean',
+    p05=lambda x: x.quantile(0.05),
+    p95=lambda x: x.quantile(0.95)
+).reset_index()
+
+# Calcula o relativo baseado na média
+df_hora_agrupado['fator_horario_relativo'] = df_hora_agrupado['fator_horario'] / df_hora_agrupado['fator_horario'].sum()
+df_hora_agrupado['fator_horario_p05_relativo'] = df_hora_agrupado['p05'] / df_hora_agrupado['p05'].sum()
+df_hora_agrupado['fator_horario_p95_relativo'] = df_hora_agrupado['p95'] / df_hora_agrupado['p95'].sum()
+
+# Configuração do gráfico
+plt.plot(df_hora_agrupado['horario'], df_hora_agrupado['fator_horario_relativo'], 
+         label='Média Relativa', color='blue', lw=2)
+
+plt.xlabel('Hora do Dia')
+plt.ylabel('Fator Relativo')
+plt.title('Variação Horária Relativa')
+plt.xticks(range(0, 24))
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend()
+plt.tight_layout()
+plt.savefig('grafico_fator_horario.png')
+
 
 
 
