@@ -267,7 +267,6 @@ plt.xticks(range(0, 24))
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend()
 plt.tight_layout()
-plt.savefig('grafico_fator_horario.png')
 
 
 
