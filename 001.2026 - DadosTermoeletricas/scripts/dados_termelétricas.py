@@ -19,6 +19,7 @@ import os
 # Caminho para os arquivos CSV
 path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\001.2026 - DadosTermoeletricas\inputs\dados'
 files = glob.glob(os.path.join(path, "*.csv"))
+fig_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\001.2026 - DadosTermoeletricas\figures'
 
 # Lista para armazenar os DataFrames
 df_list = []
@@ -239,9 +240,8 @@ df_mensal.to_csv(
     index=False
 )
 
-#%% calcular media, p05, p95 e mediaRelativa dos fatores de desagregação horário
+#%% Perfil Horário do fator relativo
 
-#
 df_hora['horario'] = df_hora['hora'].dt.hour
 
 # Agrupa calculando média, percentil 5 e percentil 95
@@ -253,8 +253,6 @@ df_hora_agrupado = df_hora.groupby('horario')['fator_horario'].agg(
 
 # Calcula o relativo baseado na média
 df_hora_agrupado['fator_horario_relativo'] = df_hora_agrupado['fator_horario'] / df_hora_agrupado['fator_horario'].sum()
-df_hora_agrupado['fator_horario_p05_relativo'] = df_hora_agrupado['p05'] / df_hora_agrupado['p05'].sum()
-df_hora_agrupado['fator_horario_p95_relativo'] = df_hora_agrupado['p95'] / df_hora_agrupado['p95'].sum()
 
 # Configuração do gráfico
 plt.plot(df_hora_agrupado['horario'], df_hora_agrupado['fator_horario_relativo'], 
@@ -267,10 +265,159 @@ plt.xticks(range(0, 24))
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend()
 plt.tight_layout()
+plt.savefig(os.path.join(fig_path,'Perfil Horário do fator relativo.png'),dpi=300)
 
 
+#%% Perfil Horário Interanual do fator relativo
+
+# Extrair ano
+df_hora['ano'] = df_hora['hora'].dt.year
+
+plt.figure(figsize=(12, 6))
+
+# Plotar linhas finas para cada ano
+for ano in sorted(df_hora['ano'].unique()):
+    df_ano = df_hora[df_hora['ano'] == ano]
+    # Agrupa por hora para aquele ano específico
+    agrupado_ano = df_ano.groupby('horario')['fator_horario'].mean().reset_index()
+    # Normaliza pela soma do próprio ano para ver o formato do perfil
+    relativo_ano = agrupado_ano['fator_horario'] / agrupado_ano['fator_horario'].sum()
+    
+    plt.plot(agrupado_ano['horario'], relativo_ano, color='gray', lw=0.5, alpha=0.5)
+
+# Plotar a média geral (que você já calculou) em destaque
+plt.plot(df_hora_agrupado['horario'], df_hora_agrupado['fator_horario_relativo'], 
+         label='Média Geral (2017-2024)', color='blue', lw=3)
+
+plt.title('Variação Horária: Linhas Anuais vs Média Geral')
+plt.xlabel('Hora do Dia')
+plt.ylabel('Fator Relativo')
+plt.xticks(range(0, 24))
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.3)
+plt.show()
+plt.savefig(os.path.join(fig_path,'Perfil Horário Interanual do fator relativo.png'),dpi=300)
 
 
+#%% Perfil Semanal do fator relativo
+
+import matplotlib.pyplot as plt
+
+# 1. Extrair o dia da semana (0=Segunda, 6=Domingo)
+df_hora['dia_semana_num'] = df_hora['hora'].dt.dayofweek
+# Mapeamento para nomes em português
+dias_nomes = {0: 'Seg', 1: 'Ter', 2: 'Qua', 3: 'Qui', 4: 'Sex', 5: 'Sab', 6: 'Dom'}
+
+# 2. Agrupamento por dia da semana
+df_semana_agrupado = df_hora.groupby('dia_semana_num')['fator_horario'].agg(
+    fator_medio='mean',
+    p05=lambda x: x.quantile(0.05),
+    p95=lambda x: x.quantile(0.95)
+).reset_index()
+
+# 3. Normalização Consistente
+# Dividimos pela soma das médias para que a linha azul (média) some 1
+total_referencia = df_semana_agrupado['fator_medio'].sum()
+
+df_semana_agrupado['rel_medio'] = df_semana_agrupado['fator_medio'] / total_referencia
+
+# 4. Gráfico
+plt.figure(figsize=(10, 5))
+
+plt.plot(df_semana_agrupado['dia_semana_num'], df_semana_agrupado['rel_medio'], 
+         label='Média Diária', color='blue', lw=3, marker='o')
 
 
+# Ajustar os nomes no eixo X
+plt.xticks(ticks=range(7), labels=[dias_nomes[i] for i in range(7)])
 
+plt.title('Perfil Semanal de Variação Relativa 2017-2024')
+plt.xlabel('Dia da Semana')
+plt.ylabel('Fator Relativo')
+plt.grid(True, axis='y', linestyle=':', alpha=0.7)
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(os.path.join(fig_path,'Perfil dos dias da semana do fator relativo.png'),dpi=300)
+
+
+#%% Perfil Semanal Interanual do fator relativo
+
+plt.figure(figsize=(10, 5))
+
+for ano in sorted(df_hora['ano'].unique()):
+    df_ano = df_hora[df_hora['ano'] == ano]
+    agrupado_ano = df_ano.groupby('dia_semana_num')['fator_horario'].mean().reset_index()
+    # Normaliza pela soma do ano
+    total_ano = agrupado_ano['fator_horario'].sum()
+    
+    plt.plot(agrupado_ano['dia_semana_num'], agrupado_ano['fator_horario'] / total_ano, 
+             color='gray', lw=0.5, alpha=0.5)
+
+plt.plot(df_semana_agrupado['dia_semana_num'], df_semana_agrupado['rel_medio'], 
+         label='Média Semanal Geral', color='blue', lw=3, marker='o')
+
+plt.xticks(ticks=range(7), labels=[dias_nomes[i] for i in range(7)])
+plt.title('Perfil Semanal: Variação entre Anos (2017-2024)')
+plt.legend()
+plt.show()
+
+plt.savefig(os.path.join(fig_path,'Perfil dos dias da semana interanual do fator relativo.png'),dpi=300)
+
+#%% Perfil mensal do fator relativo
+
+# 1. Extrair o mês (1 a 12)
+df_hora['mes'] = df_hora['hora'].dt.month
+
+# 2. Agrupamento Mensal
+df_mensal_agrupado = df_hora.groupby('mes')['fator_horario'].agg(
+    fator_medio='mean',
+    p05=lambda x: x.quantile(0.05),
+    p95=lambda x: x.quantile(0.95)
+).reset_index()
+
+# 3. Normalização Técnica (Denominador Único)
+# Isso garante que a hierarquia Vermelho > Azul > Verde seja respeitada
+total_referencia = df_mensal_agrupado['fator_medio'].sum()
+
+df_mensal_agrupado['rel_medio'] = df_mensal_agrupado['fator_medio'] / total_referencia
+
+# 4. Gráfico
+plt.figure(figsize=(12, 6))
+
+# Linhas de tendência
+plt.plot(df_mensal_agrupado['mes'], df_mensal_agrupado['rel_medio'], 
+         label='Média Mensal', color='blue', lw=3, marker='s')
+
+# Ajustes de Eixo e Legenda
+plt.title('Sazonalidade Mensal Relativa 2017-2024', fontsize=14)
+plt.xlabel('Mês do Ano')
+plt.ylabel('Fator Relativo')
+plt.xticks(range(1, 13)) # Garante que apareçam os 12 meses
+plt.grid(True, linestyle=':', alpha=0.6)
+plt.legend(loc='upper right')
+plt.tight_layout()
+
+plt.savefig(os.path.join(fig_path,'Perfil mensal do fator relativo.png'),dpi=300)
+
+#%% Perfil mensal interanual do fator relativo
+
+plt.figure(figsize=(12, 6))
+
+for ano in sorted(df_hora['ano'].unique()):
+    df_ano = df_hora[df_hora['ano'] == ano]
+    agrupado_ano = df_ano.groupby('mes')['fator_horario'].mean().reset_index()
+    total_ano = agrupado_ano['fator_horario'].sum()
+    
+    plt.plot(agrupado_ano['mes'], agrupado_ano['fator_horario'] / total_ano, 
+             color='gray', lw=0.5, alpha=0.5)
+
+plt.plot(df_mensal_agrupado['mes'], df_mensal_agrupado['rel_medio'], 
+         label='Média Mensal Geral', color='blue', lw=3, marker='s')
+
+plt.title('Sazonalidade Mensal: Variação entre Anos (2017-2024)')
+plt.xticks(range(1, 13))
+plt.legend()
+plt.show()
+
+plt.savefig(os.path.join(fig_path,'Perfil mensal interanual do fator relativo.png'),dpi=300)
