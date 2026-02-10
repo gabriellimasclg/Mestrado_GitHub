@@ -266,7 +266,7 @@ plt.grid(True, linestyle='--', alpha=0.6)
 plt.legend()
 plt.tight_layout()
 plt.savefig(os.path.join(fig_path,'Perfil Horário do fator relativo.png'),dpi=300)
-
+plt.show()
 
 #%% Perfil Horário Interanual do fator relativo
 
@@ -295,9 +295,8 @@ plt.ylabel('Fator Relativo')
 plt.xticks(range(0, 24))
 plt.legend()
 plt.grid(True, linestyle='--', alpha=0.3)
-plt.show()
 plt.savefig(os.path.join(fig_path,'Perfil Horário Interanual do fator relativo.png'),dpi=300)
-
+plt.show()
 
 #%% Perfil Semanal do fator relativo
 
@@ -339,7 +338,7 @@ plt.legend()
 plt.tight_layout()
 
 plt.savefig(os.path.join(fig_path,'Perfil dos dias da semana do fator relativo.png'),dpi=300)
-
+plt.show()
 
 #%% Perfil Semanal Interanual do fator relativo
 
@@ -360,10 +359,8 @@ plt.plot(df_semana_agrupado['dia_semana_num'], df_semana_agrupado['rel_medio'],
 plt.xticks(ticks=range(7), labels=[dias_nomes[i] for i in range(7)])
 plt.title('Perfil Semanal: Variação entre Anos (2017-2024)')
 plt.legend()
-plt.show()
-
 plt.savefig(os.path.join(fig_path,'Perfil dos dias da semana interanual do fator relativo.png'),dpi=300)
-
+plt.show()
 #%% Perfil mensal do fator relativo
 
 # 1. Extrair o mês (1 a 12)
@@ -399,6 +396,7 @@ plt.legend(loc='upper right')
 plt.tight_layout()
 
 plt.savefig(os.path.join(fig_path,'Perfil mensal do fator relativo.png'),dpi=300)
+plt.show()
 
 #%% Perfil mensal interanual do fator relativo
 
@@ -418,6 +416,6 @@ plt.plot(df_mensal_agrupado['mes'], df_mensal_agrupado['rel_medio'],
 plt.title('Sazonalidade Mensal: Variação entre Anos (2017-2024)')
 plt.xticks(range(1, 13))
 plt.legend()
-plt.show()
 
 plt.savefig(os.path.join(fig_path,'Perfil mensal interanual do fator relativo.png'),dpi=300)
+plt.show()
