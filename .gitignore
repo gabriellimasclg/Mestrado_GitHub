@@ -2,16 +2,19 @@
 001.2026 - DadosTermoeletricas/inputs/
 002.2026 - MaioresEmissoresParaDesagregação/inputs/
 003.2026 - DesagregacaoSIDRA8885/inputs/
+004.2026 - AnaliseResultadoCMAQ/inputs/
 
 # Ignorar saídas e resultados 
 001.2026 - DadosTermoeletricas/outputs/
 002.2026 - MaioresEmissoresParaDesagregação/outputs/
 003.2026 - DesagregacaoSIDRA8885/outputs/
+004.2026 - AnaliseResultadoCMAQ/outputs/
 
 # Ignorar figuras e gráficos 
 001.2026 - DadosTermoeletricas/figures/
 002.2026 - MaioresEmissoresParaDesagregação/figures/
 003.2026 - DesagregacaoSIDRA8885/figures/
+004.2026 - AnaliseResultadoCMAQ/figures/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -194,3 +197,8 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+input_base/BR_UF_2024/BR_UF_2024.cpg
+input_base/BR_UF_2024/BR_UF_2024.dbf
+input_base/BR_UF_2024/BR_UF_2024.prj
+input_base/BR_UF_2024/BR_UF_2024.shp
+input_base/BR_UF_2024/BR_UF_2024.shx
