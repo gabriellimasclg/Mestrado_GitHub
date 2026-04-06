@@ -3,18 +3,23 @@
 002.2026 - MaioresEmissoresParaDesagregação/inputs/
 003.2026 - DesagregacaoSIDRA8885/inputs/
 004.2026 - AnaliseResultadoCMAQ/inputs/
+005.2026 - AnaliseEmissoresMinorMajor/inputs/
 
 # Ignorar saídas e resultados 
 001.2026 - DadosTermoeletricas/outputs/
 002.2026 - MaioresEmissoresParaDesagregação/outputs/
 003.2026 - DesagregacaoSIDRA8885/outputs/
 004.2026 - AnaliseResultadoCMAQ/outputs/
+005.2026 - AnaliseEmissoresMinorMajor/outputs/
 
 # Ignorar figuras e gráficos 
 001.2026 - DadosTermoeletricas/figures/
 002.2026 - MaioresEmissoresParaDesagregação/figures/
 003.2026 - DesagregacaoSIDRA8885/figures/
 004.2026 - AnaliseResultadoCMAQ/figures/
+005.2026 - AnaliseEmissoresMinorMajor/figures/
+
+input_base/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
