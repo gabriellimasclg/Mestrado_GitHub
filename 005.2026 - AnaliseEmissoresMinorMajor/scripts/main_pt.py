@@ -11,12 +11,15 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 
-from functions import (
+from functions_pt import (
     plot_mapa_emissoes_por_poluente,
     plot_mapas_impacto,
     plot_barrash_impacto_poluentes,
-    plot_barras_estado_poluente,
-    plot_mapa_regioes)
+    plot_mosaico_pixels_poluentes,
+    plot_tabela_top3_setores_estado,
+    plot_heatmap_setor_poluente
+    )
+
 
 import matplotlib.pyplot as plt
 
@@ -28,7 +31,7 @@ plt.rcParams["font.family"] = "DejaVu Sans"
 repopath = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\005.2026 - AnaliseEmissoresMinorMajor'
 inputs = os.path.join(repopath,'inputs')
 outputs = os.path.join(repopath,'outputs')
-figures = os.path.join(repopath,'figures')
+figures = os.path.join(repopath,'figures','pt')
 
 #importa inventário, definindo tipo de algumas colunas
 inv = pd.read_csv(os.path.join(inputs,'emission_total_light_v2.csv'),
@@ -63,6 +66,12 @@ inv = inv.merge(
     how='left'
 )
 
+inv = inv.rename(columns={
+    'PM10': 'MP10',
+    'PM25': 'MP2.5',
+    'TSP':'PTS'
+})
+
 # transformar df em gdf, para facilitar análises espaciais
 inv_gdf = gpd.GeoDataFrame(
     inv.copy(),
@@ -84,7 +93,7 @@ mapa_regiao = {
 inv_gdf['NM_REGIAO'] = inv_gdf['SIGLA_UF'].map(mapa_regiao)
 
 #determina os poluentes de interesse a serem analisados
-pol_interest = ['PM10', 'PM25','SOx', 'NOx', 'CO', 'TSP','Pb']
+pol_interest = ['MP10', 'MP2.5','SOx', 'NOx', 'CO', 'PTS','Pb']
 color_pol_interest = ['black','blue','orange','green','grey','red','brown']
 
 #classifica cada indústria para uma cor padronizada
@@ -113,16 +122,17 @@ plot_barrash_impacto_poluentes(
     figures=figures,
 )
 
-
-plot_barras_estado_poluente(
-    inv=inv,
-    figures=figures,
+#mosaico com emissões pixeladas
+plot_mosaico_pixels_poluentes(
+    inv_gdf=inv_gdf,
+    br_estado=br_estado,
+    br_regiao=br_regiao,
     pol_interest=pol_interest,
+    pol_destaque='MP10',          # opcional, já é default
+    figures=figures,
 )
 
-#%% Auxiliares
-
-#Comparação de emissões de poluente por estado, util para descrever
+#Auxiliar: Comparação de emissões de poluente por estado, util para descrever
 plot_mapa_emissoes_por_poluente(
     inv_gdf=inv_gdf,
     br_estado=br_estado,
@@ -131,29 +141,17 @@ plot_mapa_emissoes_por_poluente(
     figures=figures,
 )
 
-#%% Distribuição espacial das emissões por poluente
-
-'''
-1º Comentarios no código
-3. setor que mais emite por região (mapa do br)
-4. emissões por estado e por poluente (+tendencia nas cores das barras)
-5. emissões pixeladas por poluente (média anual) 12x12
-6. gráfico de tendencias por poluente (12x12)
-'''
-
-#%%
-
-plot_barras_estado_poluente(
+# Seção 3.4.1 — Table Y
+plot_tabela_top3_setores_estado(
     inv=inv,
     figures=figures,
     pol_interest=pol_interest,
 )
 
-plot_mapa_regioes(
-    br_estado=br_estado,
+# Seção 3.4.2 — Figure Z
+plot_heatmap_setor_poluente(
+    inv=inv,
     figures=figures,
-)    
+    pol_interest=pol_interest,
+)
 
-
-
-#%%

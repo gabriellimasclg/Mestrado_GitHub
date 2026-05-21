@@ -59,16 +59,33 @@ df_hora['dayofweek'] = df_hora['datetime'].dt.dayofweek
 df_hora['month'] = df_hora['datetime'].dt.month
 
 # Perfil horário
-hourly_profile = df_hora.groupby(['nfr', 'hour'])['val_geracao'].mean().reset_index()
-hourly_profile['factor']=hourly_profile.groupby('nfr')['val_geracao'].transform(lambda x: x / x.sum())
+hourly_profile = (
+    df_hora.groupby(['nfr', 'hour'])['val_geracao']
+    .agg(mean='mean', min='min', max='max')
+    .reset_index()
+)
 
-#Perfil de dias da semana
-dayofweek_profile =  df_hora.groupby(['nfr', 'dayofweek'])['val_geracao'].mean().reset_index()
-dayofweek_profile['factor']=dayofweek_profile.groupby('nfr')['val_geracao'].transform(lambda x: x / x.sum())
+# Perfil de dias da semana
+dayofweek_profile = (
+    df_hora.groupby(['nfr', 'dayofweek'])['val_geracao']
+    .agg(mean='mean', min='min', max='max')
+    .reset_index()
+)
 
-#Perfil mensal
-monthly_profile =  df_hora.groupby(['nfr', 'month'])['val_geracao'].mean().reset_index()
-monthly_profile['factor']=monthly_profile.groupby('nfr')['val_geracao'].transform(lambda x: x / x.sum())
+# Perfil mensal
+monthly_profile = (
+    df_hora.groupby(['nfr', 'month'])['val_geracao']
+    .agg(mean='mean', min='min', max='max')
+    .reset_index()
+)
+
+# Normalizar todos de uma vez
+for profile in [hourly_profile, dayofweek_profile, monthly_profile]:
+    soma = profile.groupby('nfr')['mean'].transform('sum')
+    profile['factor']     = profile['mean'] / soma
+    profile['factor_min'] = profile['min']  / soma
+    profile['factor_max'] = profile['max']  / soma
+        
 #%% Plotagem
 
 # Configurações estéticas gerais
@@ -111,3 +128,49 @@ os.makedirs(folder, exist_ok=True)
 hourly_profile[['hour','factor']].to_csv(os.path.join(folder, "1.A.1.a_hourly.csv"), index=False)
 monthly_profile[['month','factor']].to_csv(os.path.join(folder, "1.A.1.a_monthly.csv"), index=False)
 dayofweek_profile[['dayofweek','factor']].to_csv(os.path.join(folder, "1.A.1.a_weekly.csv"), index=False)
+
+import numpy as np
+
+figure_path = os.path.join(repopath,'figures', 'profiles')
+os.makedirs(figure_path, exist_ok=True)
+
+def export_graphic_profiles(df_profile, profile_name, col_name):
+    folder = os.path.join(figure_path, profile_name)
+    os.makedirs(folder, exist_ok=True)
+    
+    for nfr_code, group in df_profile.groupby('nfr'):
+        filename = f"{nfr_code}_{profile_name}.png"
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # 1. A mancha (fill_between) - IMPORTANTE: passar group[col_name]
+        ax.fill_between(group[col_name], 
+                        group['factor_min'], 
+                        group['factor_max'], 
+                        color='blue', alpha=0.2, label='Min-Max')
+        
+        # 2. A linha da média
+        ax.plot(group[col_name], group['factor'], color='blue', lw=2, label=f'{profile_name.capitalize()} factor - NFR: {nfr_code}')
+        
+        ax.set_xlabel(col_name)
+        ax.set_ylabel('factor')
+        #ax.set_title(f"{profile_name.capitalize()} profile - NFR: {nfr_code}")
+        ax.legend(loc='lower center',ncols=2,bbox_to_anchor=(0.5,-0.2),frameon=False)
+        # Pega o menor e o maior valor da coluna de tempo (ex: hour) e gera o range
+        ax.set_xticks(np.arange(group[col_name].min(), group[col_name].max() + 1, 1))
+        plt.tight_layout()
+        ax.grid(
+            True,
+            axis='both',       # 'x', 'y' ou 'both'
+            which='major',     # 'major', 'minor' ou 'both'
+            color='gray',
+            linestyle='--',
+            linewidth=0.5,
+            alpha=0.7
+        )
+        plt.savefig(os.path.join(folder, filename))
+        plt.close()
+        
+export_graphic_profiles(hourly_profile, 'hourly', 'hour')
+export_graphic_profiles(dayofweek_profile, 'weekly', 'dayofweek')
+export_graphic_profiles(monthly_profile, 'monthly', 'month')

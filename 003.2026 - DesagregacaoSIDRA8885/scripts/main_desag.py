@@ -11,6 +11,8 @@ posteriormente utilizado para desagregação de valores anuais
 
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+import numpy as np
 
 repopath = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\003.2026 - DesagregacaoSIDRA8885'
 
@@ -85,17 +87,25 @@ df_nfr_prodcode = df_sidra_hourly.merge(nfr_prodcode, on='prod_code', how='outer
 df_nfr_prodcode['hour'] = df_nfr_prodcode['datetime'].dt.hour
 df_nfr_prodcode['dayofweek'] = df_nfr_prodcode['datetime'].dt.dayofweek
 
-# Perfil horário
-hourly_profile = df_nfr_prodcode.groupby(['nfr', 'hour'])['Producao_horaria'].mean().reset_index()
-hourly_profile['factor']=hourly_profile.groupby('nfr')['Producao_horaria'].transform(lambda x: x / x.sum())
+def create_profile(df, group_cols):
+    
+    # Calcula média, min e max da produção para cada grupo
+    profile = df.groupby(group_cols)['Producao_horaria'].agg(['mean', 'min', 'max']).reset_index()
+    
+    # Calcula o fator baseado na soma das médias (para a linha principal)
+    # E escala o min/max pelo mesmo denominador para manter a proporção
+    group_sum = profile.groupby('nfr')['mean'].transform('sum')
+    
+    profile['factor'] = profile['mean'] / group_sum
+    profile['factor_min'] = profile['min'] / group_sum
+    profile['factor_max'] = profile['max'] / group_sum
+    return profile
 
-#Perfil de dias da semana
-dayofweek_profile =  df_nfr_prodcode.groupby(['nfr', 'dayofweek'])['Producao_horaria'].mean().reset_index()
-dayofweek_profile['factor']=dayofweek_profile.groupby('nfr')['Producao_horaria'].transform(lambda x: x / x.sum())
+# Aplica para cada escala
+hourly_profile = create_profile(df_nfr_prodcode, ['nfr', 'hour'])
+dayofweek_profile = create_profile(df_nfr_prodcode, ['nfr', 'dayofweek'])
+monthly_profile = create_profile(df_nfr_prodcode, ['nfr', 'month'])
 
-#Perfil mensal
-monthly_profile =  df_nfr_prodcode.groupby(['nfr', 'month'])['Producao_horaria'].mean().reset_index()
-monthly_profile['factor']=monthly_profile.groupby('nfr')['Producao_horaria'].transform(lambda x: x / x.sum())
 
 #%% Exportação dos perfis
 
@@ -119,3 +129,49 @@ export_nfr_profiles(dayofweek_profile, 'weekly', 'dayofweek')
 export_nfr_profiles(monthly_profile, 'monthly', 'month')
 
 print(f"Exportação concluída em: {profiles_path}")
+
+#%% Gráfico para cada perfil criado
+
+figure_path = os.path.join(repopath,'figures', 'profiles')
+os.makedirs(figure_path, exist_ok=True)
+
+def export_graphic_profiles(df_profile, profile_name, col_name):
+    folder = os.path.join(figure_path, profile_name)
+    os.makedirs(folder, exist_ok=True)
+    
+    for nfr_code, group in df_profile.groupby('nfr'):
+        filename = f"{nfr_code}_{profile_name}.png"
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # 1. A mancha (fill_between) - IMPORTANTE: passar group[col_name]
+        ax.fill_between(group[col_name], 
+                        group['factor_min'], 
+                        group['factor_max'], 
+                        color='blue', alpha=0.2, label='Min-Max')
+        
+        # 2. A linha da média
+        ax.plot(group[col_name], group['factor'], color='blue', lw=2, label=f'{profile_name.capitalize()} factor - NFR: {nfr_code}')
+        
+        ax.set_xlabel(col_name)
+        ax.set_ylabel('factor')
+        #ax.set_title(f"{profile_name.capitalize()} profile - NFR: {nfr_code}")
+        ax.legend(loc='lower center',ncols=2,bbox_to_anchor=(0.5,-0.2),frameon=False)
+        # Pega o menor e o maior valor da coluna de tempo (ex: hour) e gera o range
+        ax.set_xticks(np.arange(group[col_name].min(), group[col_name].max() + 1, 1))
+        plt.tight_layout()
+        ax.grid(
+            True,
+            axis='both',       # 'x', 'y' ou 'both'
+            which='major',     # 'major', 'minor' ou 'both'
+            color='gray',
+            linestyle='--',
+            linewidth=0.5,
+            alpha=0.7
+        )
+        plt.savefig(os.path.join(folder, filename))
+        plt.close()
+        
+export_graphic_profiles(hourly_profile, 'hourly', 'hour')
+export_graphic_profiles(dayofweek_profile, 'weekly', 'dayofweek')
+export_graphic_profiles(monthly_profile, 'monthly', 'month')
