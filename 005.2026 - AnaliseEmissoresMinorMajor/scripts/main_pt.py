@@ -31,8 +31,8 @@ plt.rcParams["font.family"] = "DejaVu Sans"
 repopath = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\005.2026 - AnaliseEmissoresMinorMajor'
 inputs = os.path.join(repopath,'inputs')
 outputs = os.path.join(repopath,'outputs')
-#figures = os.path.join(repopath,'figures','pt')
-figures = os.path.join(repopath,'figures','LeoPediu')
+figures = os.path.join(repopath,'figures','pt')
+#figures = os.path.join(repopath,'figures','LeoPediu')
 
 #importa inventário, definindo tipo de algumas colunas
 inv = pd.read_csv(os.path.join(inputs,'emission_total_light_v2.csv'),
@@ -62,8 +62,8 @@ inv_ultimo['impact'] = np.where(
 inv = inv.drop(columns='impact', errors='ignore')
 
 #Vou filtrar apenas 2023 pq Leo pediu
-#inv = inv[inv['ANO']!=2024]
-inv = inv[inv['ANO']==2023]
+inv = inv[inv['ANO']!=2024]
+#inv = inv[inv['ANO']==2023]
 
 inv = inv.merge(
     inv_ultimo[['CPF_CNPJ', 'SIGLA_UF', 'impact']],

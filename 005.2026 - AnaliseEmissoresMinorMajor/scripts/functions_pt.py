@@ -122,6 +122,8 @@ def plot_mapas_impacto(
     '''
     Mapa do brasil com pontos por impacto por região
     '''
+    ultimo_ano = inv_gdf['ANO'].max()
+    inv_gdf = inv_gdf[inv_gdf['ANO']==ultimo_ano]
     
     # Configurações e Traduções
     IMPACT_CONFIG = {
