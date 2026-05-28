@@ -4,6 +4,8 @@
 003.2026 - DesagregacaoSIDRA8885/inputs/
 004.2026 - AnaliseResultadoCMAQ/inputs/
 005.2026 - AnaliseEmissoresMinorMajor/inputs/
+006.2026 - Revisão TCC/inputs/
+help/
 
 # Ignorar saídas e resultados 
 001.2026 - DadosTermoeletricas/outputs/
@@ -11,6 +13,8 @@
 003.2026 - DesagregacaoSIDRA8885/outputs/
 004.2026 - AnaliseResultadoCMAQ/outputs/
 005.2026 - AnaliseEmissoresMinorMajor/outputs/
+006.2026 - Revisão TCC/outputs/
+input_base/
 
 # Ignorar figuras e gráficos 
 001.2026 - DadosTermoeletricas/figures/
@@ -18,8 +22,9 @@
 003.2026 - DesagregacaoSIDRA8885/figures/
 004.2026 - AnaliseResultadoCMAQ/figures/
 005.2026 - AnaliseEmissoresMinorMajor/figures/
+006.2026 - Revisão TCC/figures/
 
-input_base/
+006.2026 - Revisão TCC/help/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

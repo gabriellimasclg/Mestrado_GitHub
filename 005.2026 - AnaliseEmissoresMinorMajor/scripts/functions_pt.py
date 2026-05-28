@@ -914,6 +914,14 @@ Funções para a seção 3.4 — Sectoral Emission Patterns and Pollutant Distri
 Adicionar ao functions_pt.py
 """
 
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.ticker as mticker
+from matplotlib.patches import Patch
+
 
 # ── Configurações compartilhadas ────────────────────────────────────────────
 
@@ -1047,95 +1055,301 @@ def plot_tabela_top3_setores_estado(
     top3['REGIAO_ORD'] = top3['REGIAO'].map({r: i for i, r in enumerate(REGIAO_ORDER)})
     top3 = top3.sort_values(['REGIAO_ORD', 'pct_nac'], ascending=[True, False]).reset_index(drop=True)
 
+    # ── Exporta Excel ───────────────────────────────────────────────────────
+    # expande a lista top3 em colunas separadas
+    top3_exp = top3.copy()
+    top3_exp['1º Setor']  = top3_exp['top3'].apply(lambda x: x[0] if len(x) > 0 else '')
+    top3_exp['2º Setor']  = top3_exp['top3'].apply(lambda x: x[1] if len(x) > 1 else '')
+    top3_exp['3º Setor']  = top3_exp['top3'].apply(lambda x: x[2] if len(x) > 2 else '')
+    top3_exp = top3_exp[[col_uf, 'REGIAO', '1º Setor', '2º Setor', '3º Setor']]
+    top3_exp.columns      = ['Estado', 'Região', '1º Setor', '2º Setor', '3º Setor']
+
+    # cores dos macrosetores em hex (para colorir células)
+    def hex_to_rgb(h):
+        h = h.lstrip('#')
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    out_path = os.path.join(figures, nome_arquivo.replace('.png', '.xlsx'))
+    with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
+        top3_exp.to_excel(writer, index=False, sheet_name='Top3_Setores')
+        ws = writer.sheets['Top3_Setores']
+
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        # larguras das colunas
+        col_widths = [8, 14, 28, 28, 28]
+        for ci, w in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(ci)].width = w
+
+        # estilo do cabeçalho
+        header_fill = PatternFill('solid', fgColor='2C3E50')
+        header_font = Font(bold=True, color='FFFFFF', size=10)
+        for cell in ws[1]:
+            cell.fill      = header_fill
+            cell.font      = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # cores das regiões (para coluna Região)
+        regiao_fills = {
+            'Norte':        PatternFill('solid', fgColor='5B8DB8'),
+            'Nordeste':     PatternFill('solid', fgColor='C4A052'),
+            'Centro-oeste': PatternFill('solid', fgColor='A0785A'),
+            'Sudeste':      PatternFill('solid', fgColor='7A6E9E'),
+            'Sul':          PatternFill('solid', fgColor='5A9E82'),
+        }
+
+        # cores dos macrosetores (para colunas de setor)
+        macro_fills = {
+            setor: PatternFill('solid', fgColor=cor.lstrip('#'))
+            for setor, cor in MACRO_COLORS.items()
+        }
+
+        thin = Side(style='thin', color='DDDDDD')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+            reg_val = ws.cell(row=row_idx, column=2).value
+            bg_fill = PatternFill('solid', fgColor='F8F9FA' if row_idx % 2 == 0 else 'FFFFFF')
+
+            for ci, cell in enumerate(row, start=1):
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+                cell.border    = border
+
+                if ci == 1:   # Estado
+                    cell.font = Font(bold=True, size=10)
+                    cell.fill = bg_fill
+                elif ci == 2:  # Região
+                    cell.fill = regiao_fills.get(reg_val, bg_fill)
+                    cell.font = Font(bold=True, color='FFFFFF', size=10)
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                else:          # Setores
+                    setor_val = cell.value or ''
+                    if setor_val in macro_fills:
+                        cell.fill = macro_fills[setor_val]
+                        cell.font = Font(bold=True, color='FFFFFF', size=10)
+                    else:
+                        cell.fill = bg_fill
+
+            ws.row_dimensions[row_idx].height = 18
+
+        ws.row_dimensions[1].height = 22
+        ws.freeze_panes = 'A2'
+
+    return out_path
+
+
+# ── Figura 2: Heatmap setor × poluente ──────────────────────────────────────
+
+def plot_heatmap_setor_poluente(
+    inv,
+    figures,
+    pol_interest,
+    col_setor='SETOR',
+    col_ano='ANO',
+    dpi=300,
+    figsize=(10, 5),
+    nome_arquivo='heatmap_setor_poluente.png',
+):
+    """
+    Figure Z — % da emissão nacional de cada poluente por macrossetor.
+    Heatmap com anotação de valor em cada célula.
+    Escala de cor independente por poluente (normalização por coluna)
+    para não deixar Combustão Industrial ofuscar tudo.
+    """
+
+    df = _adicionar_macro(inv, col_setor)
+    for p in pol_interest:
+        df[p] = pd.to_numeric(df[p], errors='coerce').fillna(0)
+
+    # % nacional por poluente: média anual → soma por macrossetor → normaliza
+    emis_macro_ano = (
+        df.groupby(['MACRO', col_ano])[pol_interest]
+          .sum()
+          .groupby('MACRO').mean()        # média entre anos
+    )
+    total_nac = emis_macro_ano.sum()      # total por poluente
+    pct = (emis_macro_ano / total_nac * 100).round(1)
+
+    # ordena macrosetores por emissão total (soma dos poluentes)
+    pct['_total'] = pct.sum(axis=1)
+    pct = pct.sort_values('_total', ascending=False).drop(columns='_total')
+    pct = pct[pol_interest]               # garante ordem das colunas
+
+    macro_order = pct.index.tolist()
+    n_macro = len(macro_order)
+    n_pol   = len(pol_interest)
+
+    # normalização por coluna (cada poluente tem seu próprio range de cor)
+    pct_norm = pct.copy()
+    for col in pct.columns:
+        col_max = pct[col].max()
+        pct_norm[col] = pct[col] / col_max if col_max > 0 else 0
+
     # ── Figura ──────────────────────────────────────────────────────────────
-    n_estados = len(top3)
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi, facecolor='white')
-    ax.set_axis_off()
 
-    # cabeçalho
-    cols_header = ['Estado', 'Região', '% Nacional', '1º Setor', '2º Setor', '3º Setor', 'Poluentes Assoc.']
-    col_x       = [0.02, 0.10, 0.19, 0.30, 0.47, 0.64, 0.81]
-    col_align   = ['left','left','center','left','left','left','left']
+    cmap = plt.get_cmap('YlOrRd')
 
-    y_top = 0.97
-    row_h = (y_top - 0.02) / (n_estados + 1.5)
+    for j, pol in enumerate(pol_interest):
+        for i, macro in enumerate(macro_order):
+            val      = pct.loc[macro, pol]
+            val_norm = pct_norm.loc[macro, pol]
+            cor      = cmap(val_norm)
 
-    # linha de cabeçalho
-    for cx, align, label in zip(col_x, col_align, cols_header):
-        ax.text(cx, y_top, label,
-                ha=align, va='top', fontsize=9, fontweight='bold',
-                transform=ax.transAxes, color='white',
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='#2c3e50', edgecolor='none'))
+            rect = plt.Rectangle([j - 0.5, i - 0.5], 1, 1,
+                                  facecolor=cor, edgecolor='white', linewidth=1.2)
+            ax.add_patch(rect)
 
-    # separador
-    ax.plot([0.01, 0.99], [y_top - row_h * 0.6, y_top - row_h * 0.6],
-            color='#2c3e50', linewidth=1.5, transform=ax.transAxes, clip_on=False)
+            # texto: branco se fundo escuro, preto se claro
+            txt_color = 'white' if val_norm > 0.55 else '#333333'
+            txt = f'{val:.1f}%' if val >= 0.1 else '—'
+            ax.text(j, i, txt,
+                    ha='center', va='center',
+                    fontsize=9, fontweight='bold', color=txt_color)
 
-    regiao_cores = {
-        'Norte': '#5b8db8', 'Nordeste': '#c4a052',
-        'Centro-oeste': '#a0785a', 'Sudeste': '#7a6e9e', 'Sul': '#5a9e82',
-    }
+    # etiqueta colorida na esquerda (nome do macrossetor)
+    for i, macro in enumerate(macro_order):
+        cor_macro = MACRO_COLORS.get(macro, '#888888')
+        ax.text(-0.55, i, macro,
+                ha='right', va='center', fontsize=9, fontweight='bold',
+                color='white',
+                bbox=dict(boxstyle='round,pad=0.3',
+                          facecolor=cor_macro, edgecolor='none', alpha=0.9),
+                transform=ax.transData)
 
-    for i, row in top3.iterrows():
-        y = y_top - row_h * (i + 1.5)
-        bg = '#f8f9fa' if i % 2 == 0 else 'white'
-        rect_bg = plt.Rectangle([0.01, y - row_h * 0.45], 0.98, row_h * 0.95,
-                                 facecolor=bg, edgecolor='none',
-                                 transform=ax.transAxes, zorder=0)
-        ax.add_patch(rect_bg)
+    ax.set_xlim(-0.5, n_pol - 0.5)
+    ax.set_ylim(-0.5, n_macro - 0.5)
+    ax.set_xticks(range(n_pol))
+    ax.set_xticklabels(pol_interest, fontsize=10, fontweight='bold')
+    ax.xaxis.set_ticks_position('top')
+    ax.xaxis.set_label_position('top')
+    ax.set_yticks([])
+    ax.tick_params(length=0)
 
-        top3_list = row['top3']
+    for spine in ax.spines.values():
+        spine.set_visible(False)
 
-        # Estado
-        ax.text(col_x[0], y, row[col_uf],
-                ha='left', va='center', fontsize=9, fontweight='bold',
-                transform=ax.transAxes)
+    ax.set_title(
+        'Distribuição setorial das emissões nacionais por poluente (%)',
+        fontsize=11, fontweight='bold', pad=28
+    )
 
-        # Região (com cor)
-        reg = row['REGIAO'] or ''
-        ax.text(col_x[1], y, reg,
-                ha='left', va='center', fontsize=8,
-                color=regiao_cores.get(reg, '#333333'),
-                fontweight='bold', transform=ax.transAxes)
+    # nota rodapé
+    fig.text(0.5, -0.02,
+             '% calculada sobre a emissão nacional média anual (2017–2023). '
+             'Escala de cor normalizada por poluente.',
+             ha='center', fontsize=8, color='#666666', style='italic')
 
-        # % Nacional — barra horizontal mini
-        pct = row['pct_nac']
-        bar_w = 0.08
-        bar_x = col_x[2] - 0.01
-        ax.barh(y, pct / 100 * bar_w, height=row_h * 0.55,
-                left=bar_x, color='#c0392b', alpha=0.7,
-                transform=ax.transAxes, zorder=2)
-        ax.text(bar_x + bar_w + 0.005, y,
-                f'{pct:.1f}%', ha='left', va='center',
-                fontsize=8, transform=ax.transAxes, color='#444444')
+    plt.tight_layout()
+    plt.savefig(os.path.join(figures, nome_arquivo),
+                dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.show()
+    plt.close()
 
-        # Top 1, 2, 3
-        for rank, cx in enumerate([col_x[3], col_x[4], col_x[5]]):
-            if rank < len(top3_list):
-                setor = top3_list[rank]
-                cor   = MACRO_COLORS.get(setor, '#888888')
-                ax.text(cx, y, setor,
-                        ha='left', va='center', fontsize=8,
-                        transform=ax.transAxes,
-                        bbox=dict(boxstyle='round,pad=0.2',
-                                  facecolor=cor, edgecolor='none', alpha=0.85),
-                        color='white', fontweight='bold')
+# ── Figura 2: Heatmap setor × poluente ──────────────────────────────────────
 
-        # Poluentes associados ao 1º setor
-        pols_assoc = MACRO_POLUENTES.get(top3_list[0] if top3_list else '', '—')
-        ax.text(col_x[6], y, pols_assoc,
-                ha='left', va='center', fontsize=8,
-                transform=ax.transAxes, color='#333333')
+def plot_heatmap_setor_poluente(
+    inv,
+    figures,
+    pol_interest,
+    col_setor='SETOR',
+    col_ano='ANO',
+    dpi=300,
+    figsize=(10, 5),
+    nome_arquivo='heatmap_setor_poluente.png',
+):
+    """
+    Figure Z — % da emissão nacional de cada poluente por macrossetor.
+    Heatmap com anotação de valor em cada célula.
+    Escala de cor independente por poluente (normalização por coluna)
+    para não deixar Combustão Industrial ofuscar tudo.
+    """
 
-    # legenda macrosetores
-    handles = [Patch(facecolor=c, label=s, edgecolor='none')
-               for s, c in MACRO_COLORS.items() if s != 'Outros']
-    fig.legend(handles=handles, ncols=3, fontsize=8, frameon=False,
-               loc='lower center', bbox_to_anchor=(0.5, -0.02))
+    df = _adicionar_macro(inv, col_setor)
+    for p in pol_interest:
+        df[p] = pd.to_numeric(df[p], errors='coerce').fillna(0)
 
-    fig.suptitle('Top 3 Macrosetores Emissores por Estado — Poluentes Associados',
-                 fontsize=12, fontweight='bold', y=0.995)
+    # % nacional por poluente: média anual → soma por macrossetor → normaliza
+    emis_macro_ano = (
+        df.groupby(['MACRO', col_ano])[pol_interest]
+          .sum()
+          .groupby('MACRO').mean()        # média entre anos
+    )
+    total_nac = emis_macro_ano.sum()      # total por poluente
+    pct = (emis_macro_ano / total_nac * 100).round(1)
 
+    # ordena macrosetores por emissão total (soma dos poluentes)
+    pct['_total'] = pct.sum(axis=1)
+    pct = pct.sort_values('_total', ascending=False).drop(columns='_total')
+    pct = pct[pol_interest]               # garante ordem das colunas
+
+    macro_order = pct.index.tolist()
+    n_macro = len(macro_order)
+    n_pol   = len(pol_interest)
+
+    # normalização por coluna (cada poluente tem seu próprio range de cor)
+    pct_norm = pct.copy()
+    for col in pct.columns:
+        col_max = pct[col].max()
+        pct_norm[col] = pct[col] / col_max if col_max > 0 else 0
+
+    # ── Figura ──────────────────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi, facecolor='white')
+
+    cmap = plt.get_cmap('YlOrRd')
+
+    for j, pol in enumerate(pol_interest):
+        for i, macro in enumerate(macro_order):
+            val      = pct.loc[macro, pol]
+            val_norm = pct_norm.loc[macro, pol]
+            cor      = cmap(val_norm)
+
+            rect = plt.Rectangle([j - 0.5, i - 0.5], 1, 1,
+                                  facecolor=cor, edgecolor='white', linewidth=1.2)
+            ax.add_patch(rect)
+
+            # texto: branco se fundo escuro, preto se claro
+            txt_color = 'white' if val_norm > 0.55 else '#333333'
+            txt = f'{val:.1f}%' if val >= 0.1 else '—'
+            ax.text(j, i, txt,
+                    ha='center', va='center',
+                    fontsize=9, fontweight='bold', color=txt_color)
+
+    # etiqueta colorida na esquerda (nome do macrossetor)
+    for i, macro in enumerate(macro_order):
+        cor_macro = MACRO_COLORS.get(macro, '#888888')
+        ax.text(-0.55, i, macro,
+                ha='right', va='center', fontsize=9, fontweight='bold',
+                color='white',
+                bbox=dict(boxstyle='round,pad=0.3',
+                          facecolor=cor_macro, edgecolor='none', alpha=0.9),
+                transform=ax.transData)
+
+    ax.set_xlim(-0.5, n_pol - 0.5)
+    ax.set_ylim(-0.5, n_macro - 0.5)
+    ax.set_xticks(range(n_pol))
+    ax.set_xticklabels(pol_interest, fontsize=10, fontweight='bold')
+    ax.xaxis.set_ticks_position('top')
+    ax.xaxis.set_label_position('top')
+    ax.set_yticks([])
+    ax.tick_params(length=0)
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    ax.set_title(
+        'Distribuição setorial das emissões nacionais por poluente (%)',
+        fontsize=11, fontweight='bold', pad=28
+    )
+
+    # nota rodapé
+    fig.text(0.5, -0.02,
+             '% calculada sobre a emissão nacional média anual (2017–2023). '
+             'Escala de cor normalizada por poluente.',
+             ha='center', fontsize=8, color='#666666', style='italic')
+
+    plt.tight_layout()
     plt.savefig(os.path.join(figures, nome_arquivo),
                 dpi=dpi, bbox_inches='tight', facecolor='white')
     plt.show()
