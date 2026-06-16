@@ -5,6 +5,7 @@
 004.2026 - AnaliseResultadoCMAQ/inputs/
 005.2026 - AnaliseEmissoresMinorMajor/inputs/
 006.2026 - Revisão TCC/inputs/
+007.2026 - AnaliseInvCMAQ/inputs/
 help/
 
 # Ignorar saídas e resultados 
@@ -14,6 +15,7 @@ help/
 004.2026 - AnaliseResultadoCMAQ/outputs/
 005.2026 - AnaliseEmissoresMinorMajor/outputs/
 006.2026 - Revisão TCC/outputs/
+007.2026 - AnaliseInvCMAQ/outputs/
 input_base/
 
 # Ignorar figuras e gráficos 
@@ -23,6 +25,7 @@ input_base/
 004.2026 - AnaliseResultadoCMAQ/figures/
 005.2026 - AnaliseEmissoresMinorMajor/figures/
 006.2026 - Revisão TCC/figures/
+007.2026 - AnaliseInvCMAQ/figures/
 
 006.2026 - Revisão TCC/help/
 

@@ -5,9 +5,6 @@ Created on Wed Apr 23 09:09:14 2025
 @author: Gabriel
 """
 
-import pandas as pd
-import unicodedata # Serve para acessar e manipular as propriedades de caracteres
-
 def clean_text(text):
     """
     Limpa uma string: remove acentos, espaços extras e converte para maiúsculo.
@@ -29,3 +26,4 @@ def clean_text(text):
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
 
     return text
+    

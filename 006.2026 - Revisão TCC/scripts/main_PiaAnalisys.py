@@ -17,10 +17,10 @@ plt.rcParams['font.family'] = 'Arial'
 #%% tratDados
 #fonte dos dados PIA: https://sidra.ibge.gov.br/tabela/7752
 
-repo_path = os.path.dirname(os.getcwd())
+repo_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\006.2026 - Revisão TCC'
 
 #Importei material gerado manualmente
-CodProdutoClassificadoNFR = pd.read_excel(os.path.join(repo_path,'inputs','MaterialGeradoManualmente','CodProdutoClassificadoNFR.xlsx'),
+CodProdutoClassificadoNFR = pd.read_excel(os.path.join(repo_path,'inputs','MaterialGeradoManualmente','1_CodProdutoClassificadoNFR.xlsx'),
                                           dtype={'PRODLIST': str})
 
 #filtrei os alimentos que tem emissões a serem consideradas
@@ -82,55 +82,101 @@ df_pia_completo = df_limpo.copy()
 df_pia_completo = conecta_ibama_ef(df_limpo,eea_ef,CodProdutoClassificadoNFR)
 
 
-# Classificar o tipo de bebida
-def classificar_produto(codigo):
-    if codigo.startswith('Sugar'):
-        return 'Açucar','beige'
-    elif codigo.startswith('Coffee'):
-        return 'Torrefação do café','brown'
-    elif codigo.startswith('Margarine'):
-        return 'Margarina e gorduras sólidas','yellow'
-    elif codigo.startswith('Cakes'):
-        return 'Bolos, biscoitos e cereais matinais','grey'
-    elif codigo.startswith(('Meat','Animal')):
-        return 'Preparação de Carnes e Ração Animal','salmon'
-    elif codigo.startswith('Wine'):
-        return 'Vinho','purple'
-    elif codigo.startswith(('White bread','Wholemeal')):
-        return 'Pão','pink'
-    elif codigo.startswith('Beer'):
-        return 'Cerveja','goldenrod'
-    else:
-        return 'Destilados','lightblue'
+# ── CLASSIFICAÇÃO DE PRODUTOS (alinhada ao inventário AlimentíciaRev) ─────────
+# O inventário novo (V3) usa a coluna 'categoria', mapeada de cod_produto pela
+# planilha manual 2_UnidadesFatorConversão.xlsx. Para que a comparação PIA ×
+# inventário case por categoria, aqui reproduzimos EXATAMENTE essa mesma fonte:
+#   1º) cod_produto -> categoria (planilha de fatores = mesma fonte do notebook)
+#   2º) fallback por Technology, no mesmo vocabulário de 'categoria'
+cores_categoria = {
+    "Açucar":                     "beige",
+    "Café":                       "brown",
+    "Gorduras sólidas":           "yellow",
+    "Bolos, biscoitos e cereais": "grey",
+    "Carne e Ração Animal":       "salmon",
+    "Vinho":                      "purple",
+    "Pão":                        "pink",
+    "Cerveja e malte":            "goldenrod",
+    "Destilados":                 "lightblue",
+}
 
-df_pia_completo['tipo_industria_nfr'], df_pia_completo['food_color'] = zip(
-    *df_pia_completo['Technology'].map(classificar_produto)
+# Fonte primária: mesmo arquivo de fatores usado pelo notebook (cod_produto -> categoria)
+df_fatores = pd.read_excel(
+    os.path.join(repo_path, 'inputs', 'MaterialGeradoManualmente', '2_UnidadesFatorConversão.xlsx'),
+    dtype={'cod_produto_fc': str}
+)
+lookup_categoria = (
+    df_fatores.dropna(subset=['categoria'])
+    .drop_duplicates('cod_produto_fc')
+    .set_index('cod_produto_fc')['categoria']
+    .to_dict()
 )
 
-df_pia_resumo = df_pia_completo[['ANO','cod_produto','PRODUÇÃO_NOVO','UND_NOVO','Technology','tipo_industria_nfr','food_color']]
+# Fallback por Technology, no MESMO vocabulário de 'categoria' do inventário
+def classificar_produto(technology):
+    t = str(technology)
+    if t.startswith('Sugar'):
+        return 'Açucar'
+    elif t.startswith('Coffee'):
+        return 'Café'
+    elif t.startswith('Margarine'):
+        return 'Gorduras sólidas'
+    elif t.startswith('Cakes'):
+        return 'Bolos, biscoitos e cereais'
+    elif t.startswith(('Meat', 'Animal', 'Fish')):
+        return 'Carne e Ração Animal'
+    elif t.startswith('Wine'):
+        return 'Vinho'
+    elif t.startswith(('Bread', 'Sponge', 'White bread', 'Wholemeal')):
+        return 'Pão'
+    elif t.startswith(('Beer', 'Barley')):
+        return 'Cerveja e malte'
+    else:
+        return 'Destilados'   # Other spirits, Brandy, Grain whisky
+
+# 1º) categoria pela planilha de fatores (idêntica ao inventário)
+df_pia_completo['categoria'] = df_pia_completo['cod_produto'].astype(str).map(lookup_categoria)
+# 2º) preenche faltantes via Technology
+mask_sem_cat = df_pia_completo['categoria'].isna()
+df_pia_completo.loc[mask_sem_cat, 'categoria'] = (
+    df_pia_completo.loc[mask_sem_cat, 'Technology'].map(classificar_produto)
+)
+df_pia_completo['food_color'] = df_pia_completo['categoria'].map(cores_categoria)
+
+df_pia_resumo = df_pia_completo[['ANO','cod_produto','PRODUÇÃO_NOVO','UND_NOVO','Technology','categoria','food_color']]
 
 #%% analiseDados
+
+# PRODUÇÃO_NOVO sai de np.select com default da coluna original (texto) → força numérico
+df_pia_resumo = df_pia_resumo.copy()
+df_pia_resumo['PRODUÇÃO_NOVO'] = pd.to_numeric(df_pia_resumo['PRODUÇÃO_NOVO'], errors='coerce')
+df_pia_resumo = df_pia_resumo.dropna(subset=['PRODUÇÃO_NOVO'])
 
 # Padronizar unidades no df_pia_resumo
 df_pia_resumo['UND_NOVO'] = df_pia_resumo['UND_NOVO'].replace({'t': 'Ton', 'ton': 'Ton', 'TON': 'Ton'})
 
 # Criar um dicionário de produto → unidade
-map_unidade = df_pia_resumo.drop_duplicates(subset=['tipo_industria_nfr'])[['tipo_industria_nfr', 'UND_NOVO']].set_index('tipo_industria_nfr')['UND_NOVO'].to_dict()
+map_unidade = df_pia_resumo.drop_duplicates(subset=['categoria'])[['categoria', 'UND_NOVO']].set_index('categoria')['UND_NOVO'].to_dict()
 
 
 figpath = os.path.join(repo_path,'figures')
 
-#importar csv com inventário
-df_inventario = pd.read_csv(os.path.join(repo_path,'inputs','inventarioEmissoesIndustriaisIndustriaAlimenticiaBR_V3.csv'))
-df_inventario['LONGITUDE'] = df_inventario['LONGITUDE'].str.replace(',', '.', regex=False).astype(float)
-df_inventario['LATITUDE'] = df_inventario['LATITUDE'].str.replace(',', '.', regex=False).astype(float)
+#importar csv com inventário (saída do notebook AlimentíciaRev: outputs/, utf-8-sig)
+df_inventario = pd.read_csv(
+    os.path.join(repo_path,'inputs','inventarioEmissoesIndustriaisIndustriaAlimenticiaBR_V3.csv'),
+    encoding='utf-8-sig'
+)
+# LATITUDE/LONGITUDE já saem como float no V3; converte só se vier como texto (com vírgula)
+for _col in ['LATITUDE', 'LONGITUDE']:
+    if df_inventario[_col].dtype == object:
+        df_inventario[_col] = df_inventario[_col].str.replace(',', '.', regex=False).astype(float)
 
 plot_producao_empilhada(
     df_pia_resumo,
     figpath = figpath,
     col_ano="ANO",
     col_valor="PRODUÇÃO_NOVO",
-    col_categoria="tipo_industria_nfr",
+    col_categoria="categoria",
     col_cor="food_color",
     titulo="Produção Anual de Alimentos"
 )
@@ -142,11 +188,11 @@ plot_mosaico_linhas_dfs(
     df2=df_pia_resumo,
     figpath=figpath,
     col_ano1="num_ano",
-    col_valor1="prodtonhl_v4",
-    col_categoria1="tipo_industria_nfr",
+    col_valor1="prodtonhl_v5",
+    col_categoria1="categoria",
     col_ano2="ANO",
     col_valor2="PRODUÇÃO_NOVO",
-    col_categoria2="tipo_industria_nfr",
+    col_categoria2="categoria",
     titulo="Produção Anual de Alimentos Emissores de NMVOC",
     ncols=3,
     nrows=3,
@@ -158,11 +204,11 @@ plot_mosaico_scatter_dfs(
     df2=df_pia_resumo,
     figpath=figpath,
     col_ano1="num_ano",
-    col_valor1="prodtonhl_v4",
-    col_categoria1="tipo_industria_nfr",
+    col_valor1="prodtonhl_v5",
+    col_categoria1="categoria",
     col_ano2="ANO",
     col_valor2="PRODUÇÃO_NOVO",
-    col_categoria2="tipo_industria_nfr",
+    col_categoria2="categoria",
     titulo="Produção Anual de Alimentos Emissores de NMVOC",
     ncols=3,
     nrows=3,
@@ -175,14 +221,14 @@ df_bias_long, produtos_ordenados = calcular_tabela_bias(
     df1=df_inventario,
     df2=df_pia_resumo,
     col_ano1="num_ano",
-    col_valor1="prodtonhl_v4",
-    col_categoria1="tipo_industria_nfr",
+    col_valor1="prodtonhl_v5",
+    col_categoria1="categoria",
     col_ano2="ANO",
     col_valor2="PRODUÇÃO_NOVO",
-    col_categoria2="tipo_industria_nfr"
+    col_categoria2="categoria"
 )
 
-df_bias_long.to_excel(r'C:\Users\glima\OneDrive\Documentos\TCC\projeto\outputs\df_bias_produtos.xlsx')
+df_bias_long.to_excel(os.path.join(repo_path, 'outputs', 'df_bias_produtos.xlsx'))
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -210,16 +256,16 @@ def plot_mosaico_boxplot_bias(
 
     os.makedirs(figpath, exist_ok=True)
     
-    # --- Mapa de cores (fixo, mesmo que antes) ---
+    # --- Mapa de cores (categorias alinhadas ao inventário AlimentíciaRev) ---
     mapa_cores = {
         'Açucar': 'beige',
-        'Torrefação do café': 'brown',
-        'Margarina e gorduras sólidas': 'yellow',
-        'Bolos, biscoitos e cereais matinais': 'grey',
-        'Preparação de Carnes e Ração Animal': 'salmon',
+        'Café': 'brown',
+        'Gorduras sólidas': 'yellow',
+        'Bolos, biscoitos e cereais': 'grey',
+        'Carne e Ração Animal': 'salmon',
         'Vinho': 'purple',
         'Pão': 'pink',
-        'Cerveja': 'goldenrod',
+        'Cerveja e malte': 'goldenrod',
         'Destilados': 'lightblue'
     }
     
@@ -272,7 +318,7 @@ def plot_mosaico_boxplot_bias(
     plt.savefig(os.path.join(figpath, "mosaico_boxplot_bias_colorido.png"),
                 dpi=300, bbox_inches='tight')
     
-    print("✅ Mosaico de Boxplot do BIAS (com unidades) gerado com sucesso.")
+    print("Mosaico de Boxplot do BIAS (com unidades) gerado com sucesso.")
 
 
 # --- COMO USAR ---

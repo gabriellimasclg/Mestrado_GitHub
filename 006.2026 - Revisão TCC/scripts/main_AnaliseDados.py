@@ -11,7 +11,6 @@ import pandas as pd
 import os
 from functions_AnaliseDados import calcular_emissoes_agregadas,criar_video_emissoes, plot_producao_empilhada,plot_emissoes_estado_ano, plot_emissoes_estado, plotar_mosaico_estado, plotar_mosaico_emissoes, analisar_tendencia_nmvc, plot_emissao, criar_cubo_emissoes_geograficas
 import matplotlib.pyplot as plt
-import xarray as xr
 import geopandas as gpd
 import unicodedata # Para normalizar nomes de estados
 import matplotlib.cm as cm
@@ -21,14 +20,30 @@ import os # Para usar o figpath
 
 plt.rcParams['font.family'] = 'Arial'
 #%% Definindo Paths e importando 
-repo_path = os.path.dirname(os.getcwd())
+repo_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\006.2026 - Revisão TCC'
 figpath = os.path.join(repo_path,'figures')
 
 #importar csv com inventário
-df = pd.read_csv(os.path.join(repo_path,'inputs','inputs','inventarioEmissoesIndustriaisIndustriaAlimenticiaBR_V3.csv'))
-df['LONGITUDE'] = df['LONGITUDE'].str.replace(',', '.', regex=False).astype(float)
-df['LATITUDE'] = df['LATITUDE'].str.replace(',', '.', regex=False).astype(float)
+df = pd.read_csv(os.path.join(repo_path,'inputs','inventarioEmissoesIndustriaisIndustriaAlimenticiaBR_V3.csv'), encoding='utf-8')
+#df['LONGITUDE'] = df['LONGITUDE'].str.replace(',', '.', regex=False).astype(float)
+#df['LATITUDE'] = df['LATITUDE'].str.replace(',', '.', regex=False).astype(float)
+# Classificação e cor por categoria (alinhado ao notebook AlimentíciaRev):
+# a categoria já vem pronta no CSV V3; aqui só mapeamos a cor de cada categoria.
+cores_categoria = {
+    "Açucar":                       "beige",
+    "Café":                         "brown",
+    "Gorduras sólidas":             "yellow",
+    "Bolos, biscoitos e cereais":   "grey",
+    "Carne e Ração Animal":         "salmon",
+    "Vinho":                        "purple",
+    "Pão":                          "pink",
+    "Cerveja e malte":              "goldenrod",
+    "Destilados":                   "lightblue",
+}
 
+df['tipo_industria_nfr'] = df['categoria']
+df['food_color'] = df['categoria'].map(cores_categoria)
+print("Linhas sem cor (categoria não mapeada):", df['food_color'].isna().sum())
 #%% quantificação estadual e regional
 
 # 1. Definir colunas de interesse
@@ -316,18 +331,19 @@ figura, eixos = plotar_mosaico_emissoes(
 
 # (Assumindo que 'ds_emissoes_completo' e 'figpath' estão definidos)
 
-# Defina o caminho de saída para o vídeo
-caminho_video = os.path.join(figpath, 'Animacao_Emissoes_NMVOC_Brasil.mp4')
+# Defina o caminho de saída para o 
+# o
+# caminho_video = os.path.join(figpath, 'Animacao_Emissoes_NMVOC_Brasil.mp4')
 
 # Chame a nova função
-criar_video_emissoes(
-    ds=ds_emissoes_completo,
-    titulo='Evolução da Emissão de NMVOC da Indústria Alimentícia',
-    cbar_label='Emissão de NMVOC (ton)',
-    scale='log',
-    save_path=caminho_video,
-    duration_per_frame=0.5 # 0.5 segundos por ano
-)
+# criar_video_emissoes(
+#     ds=ds_emissoes_completo,
+#     titulo='Evolução da Emissão de NMVOC da Indústria Alimentícia',
+#     cbar_label='Emissão de NMVOC (ton)',
+#     scale='log',
+#     save_path=caminho_video,
+#     duration_per_frame=0.5 # 0.5 segundos por ano
+# )
 #%% Mosaico de análise por estado
 
 #Estados analisados
@@ -490,23 +506,6 @@ plot_producao_empilhada(
     figpath=os.path.join(repo_path,'figures','produção_anual_barras.png')
 )
 
-
-#%% EDGAR
-
-#esses dados agrupam food_paper :(
-
-edgar = ['v8.1_FT2022_AP_NMVOC_2017_FOO_PAP_emi.nc',
-         'v8.1_FT2022_AP_NMVOC_2018_FOO_PAP_emi.nc',
-         'v8.1_FT2022_AP_NMVOC_2019_FOO_PAP_emi.nc',
-         'v8.1_FT2022_AP_NMVOC_2020_FOO_PAP_emi.nc',
-         'v8.1_FT2022_AP_NMVOC_2021_FOO_PAP_emi.nc',
-         'v8.1_FT2022_AP_NMVOC_2022_FOO_PAP_emi.nc'
-         ]
-
-
-ds2017,ds2018,ds2019,ds2020,ds2021,ds2022 = [xr.open_dataset(os.path.join(repo_path,'inputs','Edgar',file)) for file in edgar]
-
-print(ds2022)
 
 #%% tabelinha edgar
 
@@ -836,3 +835,7 @@ fig.legend(legend_entries, legend_labels, loc="lower center",
 plt.savefig(os.path.join(figpath,'edgar_alimentos.png'), dpi=300, bbox_inches='tight')
 
 plt.show()
+
+
+
+# %%

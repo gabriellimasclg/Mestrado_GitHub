@@ -11,556 +11,6 @@ import pandas as pd
 import numpy as np
 from clean_text import clean_text
 
-#%% Função para analisar CNPJs e CPFs
-
-def CNPJAnalysis(df, cnpj_column='mv.num_cpf_cnpj'):
-    """
-    Analyzes CNPJ/CPF data in a DataFrame, classifying documents and counting digit lengths.
-    
-    Parameters:
-        df (pd.DataFrame): DataFrame containing the documents to analyze
-        cnpj_column (str): Name of the column containing CPF/CNPJ numbers (default: 'mv.num_cpf_cnpj')
-    
-    Returns:
-        dict: A dictionary with the count of documents by digit length
-        pd.DataFrame: The original DataFrame with added 'tipo' column (CNPJ/CPF/outro)
-    """
-    
-    # 1. Classify documents by length
-    df['status_v01'] = np.where(
-        df[cnpj_column].str.len() == 14, 'CNPJ - Considerado para análise',
-        np.where(
-            df[cnpj_column].str.len() == 11, 'CPF - Desconsiderado para análise',
-            'CPF - Desconsiderado para análise'
-        )
-    )
-    
-    # 2. Initialize counter for digit lengths (4-14)
-    contagem = {length: 0 for length in range(4, 15)}
-    total_documents = len(df)
-    
-    # 3. Count documents by cleaned digit length
-    for doc in df[cnpj_column]:
-        # Remove all non-digit characters
-        cleaned_doc = ''.join(filter(str.isdigit, str(doc)))
-        length = len(cleaned_doc)
-        
-        if length in contagem:
-            contagem[length] += 1
-    
-    # 4. Verification and reporting
-    total_counted = sum(contagem.values())
-    
-    if total_counted == total_documents:
-        print("✅ Todos os documentos foram contabilizados!")
-    else:
-        print(f"⚠️ Atenção: {total_documents - total_counted} documentos não se enquadram nos tamanhos 4-14 dígitos")
-    
-    # 5. Detailed report
-    print("\nDistribuição de dígitos:")
-    for length, quantity in sorted(contagem.items()):
-        if quantity > 0:  # Only show lengths that actually appear
-            print(f'{quantity:>5} documentos com {length:>2} dígitos ({quantity/total_documents:.1%})')
-    
-    print(f"\nTotal contado: {total_counted} de {total_documents} documentos\nApenas serão considerados documentos com 14 dígitos (CNPJs)")
-    
-    return
-
-#%% Funções de download da base de dados
-
-# Desabilita avisos de requisições HTTPS sem verificação de certificado
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-def download_ibama_ctf_data(repo_path):
-    '''
-    Automatiza o processo de download, processamento e consolidação de dados de
-    Pessoas Jurídicas do Cadastro Técnico Federal (CTF) do IBAMA.
-
-    O fluxo de trabalho da função é o seguinte:
-    1. Cria as estruturas de pastas necessárias ('inputs/dadosIbamaCNPJ_Download'
-       para arquivos brutos e 'inputs/dadosIbamaCNPJ_Consolidado' para o final).
-    2. Pergunta ao usuário se os arquivos já foram baixados para pular a etapa de download.
-    3. Se o download for necessário, itera por todas as Unidades da Federação (UFs),
-       baixa o arquivo CSV correspondente e o salva na pasta de dados brutos.
-    4. Cada arquivo baixado é processado individualmente para padronizar CNPJs e
-       nomes de colunas.
-    5. Ao final, todos os dados processados são consolidados em um único DataFrame.
-    6. Colunas de texto ('Municipio', 'Razao Social') passam por uma limpeza final.
-    7. O DataFrame consolidado é salvo como um único arquivo CSV na pasta de
-       dados processados.
-
-    Parâmetros:
-        repo_path (str): Caminho para a pasta raiz do projeto. As subpastas de
-                         dados serão criadas dentro deste caminho.
-
-    Retorna:
-        pandas.DataFrame: Um DataFrame contendo todos os dados consolidados e limpos.
-        None: Retorna None se o processo falhar ou se nenhum arquivo for processado.
-    '''
-    
-    # Define os caminhos para as pastas de dados brutos e processados
-    raw_dir = os.path.join(repo_path, 'inputs', 'MaterialBaixado','PJ_UF')
-    processed_dir = os.path.join(repo_path, 'inputs', 'MaterialBaixado')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    # Interage com o usuário para saber se a etapa de download pode ser pulada
-    start = input('Você já tem os arquivos baixados? (s/n) ')
-    
-    # Se o usuário responder 's', o script carrega o arquivo já consolidado
-    if start.lower() == 's':
-        
-        # Caminho para o arquivo final que deveria existir
-        final_file_path = os.path.join(processed_dir, "PJ_BR.csv")
-        print(f"Carregando arquivo consolidado de: {final_file_path}")
-        
-        # Lê o CSV consolidado, garantindo a tipagem correta de colunas-chave
-        df_final = pd.read_csv(final_file_path,
-                               dtype={'CNPJ': str,
-                                      'Codigo da atividade': str,
-                                      'Codigo da categoria': str},
-                               keep_default_na=False)
-               
-        return df_final
-    
-    else:
-        # Bloco de execução para o download e processamento dos dados
-        print("Iniciando o download e processamento dos dados...")
-        base_url = "http://dadosabertos.ibama.gov.br/dados/CTF/APP/"
-        
-        # Lista de todas as Unidades da Federação do Brasil
-        ufs = [
-            'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
-            'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI',
-            'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
-        ]
-        
-        # Lista vazia para armazenar os DataFrames de cada estado após o processamento
-        pessoas_juridicas_br = []
-        
-        # Itera sobre cada UF para baixar e processar os dados
-        for uf in ufs:
-            try:
-                # Constrói a URL completa para o arquivo CSV do estado atual
-                url = f"{base_url}{uf}/pessoasJuridicas.csv"
-                print(f"Baixando {uf}...")
-                
-                # Faz a requisição GET para baixar o arquivo
-                # timeout=30: define um tempo limite de 30 segundos
-                # verify=False: ignora erros de certificado SSL (usar com cautela)
-                response = requests.get(url, verify=False, timeout=30) 
-                
-                # Verifica se a requisição foi bem-sucedida (status code 2xx)
-                response.raise_for_status() 
-                
-                # Define o caminho completo para salvar o arquivo bruto baixado
-                output_path = os.path.join(raw_dir, f"pessoasJuridicas_{uf}.csv")
-                
-                # Abre o arquivo em modo de escrita binária ('wb') e salva o conteúdo
-                with open(output_path, 'wb') as f:
-                    f.write(response.content)
-                
-                # Inicia o processamento do arquivo recém-baixado
-                try:
-                    # Carrega o arquivo CSV em um DataFrame, especificando o delimitador e os tipos de dados
-                    df = pd.read_csv(output_path,
-                                     delimiter=';',
-                                     dtype={'CNPJ': str,
-                                            'Codigo da atividade': str,
-                                            'Codigo da categoria': str},
-                                     keep_default_na=False)
-                    
-                    # Padroniza a coluna de CNPJ para ter sempre 14 dígitos, com zeros à esquerda
-                    df['CNPJ'] = df['CNPJ'].str.zfill(14) 
-                    
-                    # Limpa e padroniza os nomes das colunas usando a função externa clean_text
-                    df.columns = df.columns.map(clean_text)
-                    
-                    # Adiciona o DataFrame do estado, já limpo, à lista de consolidação
-                    pessoas_juridicas_br.append(df)
-                    
-                # Captura e informa erros que possam ocorrer durante o processamento do arquivo
-                except Exception as e:
-                    print(f"Erro ao processar {uf}: {e}")
-                    
-            # Captura e informa erros relacionados ao download (ex: rede, URL inválida)
-            except requests.exceptions.RequestException as e:
-                print(f"Erro ao baixar {uf}: {e}")
-        
-        # Após o loop, verifica se algum dado foi processado antes de consolidar
-        if pessoas_juridicas_br:
-            print("\nConsolidando todos os dados...")
-            # Junta todos os DataFrames da lista em um único DataFrame
-            df_final = pd.concat(pessoas_juridicas_br, ignore_index=True)
-            
-            # Aplica a função de limpeza nas células das colunas 'Municipio' e 'Razao Social'
-            df_final['MUNICIPIO'] = df_final['MUNICIPIO'].apply(clean_text)
-            df_final['RAZAO SOCIAL'] = df_final['RAZAO SOCIAL'].apply(clean_text)
-            df_final['MUNICIPIO'] = df_final['MUNICIPIO'].str.replace(
-                r"TRAJANO DE MORAIS", "TRAJANO DE MORAES", regex=True
-                )
-            
-            # Extrair os anos de inicio e fim das datas
-            # ANO_INICIO
-            df_final['ANO_INICIO'] = (
-                df_final['DATA DE INICIO DA ATIVIDADE']
-                .fillna('0000')                    # trata valores nulos
-                .replace('', '0000')               # trata strings vazias
-                .str[-4:]                          # pega os 4 últimos caracteres
-                .astype(int)                       # converte para inteiro
-            )
-            
-            # ANO_FIM
-            df_final['ANO_FIM'] = (
-                df_final['DATA DE TERMINO DA ATIVIDADE']
-                .fillna('0000')                    # trata valores nulos
-                .replace('', '0000')               # trata strings vazias
-                .str[-4:]
-                .astype(int)
-            )
-            #Onde a data de inicio e fim de atividade for vazio, inserir np.nan
-   
-            # Define o caminho e nome do arquivo final e o salva em formato CSV
-            output_file = os.path.join(processed_dir, "PJ_BR.csv")
-            df_final.to_csv(output_file, index=False, encoding='utf-8')
-            print("Dados baixados e processados com sucesso!")
-            
-            # Retorna o DataFrame final
-            return df_final
-            
-    # Se a lista 'pessoas_juridicas_br' estiver vazia, retorna None
-    print("Nenhum dado foi processado.")
-    return None
-
-#%% Funções de importação de base de dados
-
-def ibama_production_data_17_23(repo_path):
-    """
-    Processa dados de produção do IBAMA a partir de arquivos XLSX, limpando e
-    consolidando os dados.
-    V1 - Base de dados de 2017 até 2023
-    Vou pegar apenas até 2020 e mesclar com o outro
-    
-    
-    Parâmetros:
-        repo_path (str): Caminho raiz do repositório onde estão as pastas inputs
-        /outputs
-    
-    Retorna:
-        pd.DataFrame: DataFrame com os dados processados
-        str: Caminho do arquivo CSV salvo
-    """
-
-    # Define os caminhos para as pastas de dados brutos e processados
-    raw_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    processed_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    try:
-        # Caminho completo do arquivo
-        file_path = os.path.join(raw_dir, 'DadosProduçãoBruto.xlsx')
-        
-        # Lê as duas abas do Excel
-        aba1 = pd.read_excel(file_path, sheet_name=0, dtype={'mv.num_cpf_cnpj': str}) # 0 para a primeira aba
-        aba2 = pd.read_excel(file_path, sheet_name=1, dtype={'mv.num_cpf_cnpj': str}) # 1 para segunda aba
-                
-        # Combina as abas, deleta as linhas duplicadas
-        df_ibama_prod = pd.concat([aba1, aba2], ignore_index=True)
-        
-        
-        # Padronização dos dados com a função clean_text
-        df_ibama_clean = df_ibama_prod.copy()
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].apply(clean_text)
-        df_ibama_clean['mv.nom_pessoa'] = df_ibama_clean['mv.nom_pessoa'].apply(clean_text)
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].str.replace(
-            r"SANT'? ?ANA DO LIVRAMENTO", "SANTANA DO LIVRAMENTO", regex=True
-            )
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].str.replace(
-            r"PRESIDENTE CASTELLO BRANCO", "PRESIDENTE CASTELO BRANCO", regex=True
-            )
-              
-        # Salva o resultado
-        output_file = os.path.join(processed_dir, 'DadosProduçãoTratado_17_23.csv')
-        df_ibama_clean.to_csv(output_file, index=False, encoding='utf-8') #Remove índices
-        
-        return df_ibama_clean
-        
-    # Caso dê erro, informa ao usuário
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Arquivo RAPP.xlsx não encontrado em {raw_dir}")
-    except Exception as e:
-        raise Exception(f"Erro ao processar dados: {str(e)}")
-
-def ibama_production_data_v1(repo_path):
-    """
-    Processa dados de produção do IBAMA a partir de arquivos XLSX, limpando e
-    consolidando os dados.
-    V1 - Base de dados de 2017 até 2023
-    Vou pegar apenas até 2020 e mesclar com o outro
-    
-    Parâmetros:
-        repo_path (str): Caminho raiz do repositório onde estão as pastas inputs
-        /outputs
-    
-    Retorna:
-        pd.DataFrame: DataFrame com os dados processados
-        str: Caminho do arquivo CSV salvo
-    """
-
-    # Define os caminhos para as pastas de dados brutos e processados
-    raw_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    processed_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    try:
-        # Caminho completo do arquivo
-        file_path = os.path.join(raw_dir, 'DadosProduçãoBruto.xlsx')
-        
-        # Lê as duas abas do Excel
-        aba1 = pd.read_excel(file_path, sheet_name=0, dtype={'mv.num_cpf_cnpj': str}) # 0 para a primeira aba
-        aba2 = pd.read_excel(file_path, sheet_name=1, dtype={'mv.num_cpf_cnpj': str}) # 1 para segunda aba
-                
-        # Combina as abas, deleta as linhas duplicadas
-        df_ibama_prod = pd.concat([aba1, aba2], ignore_index=True)
-        
-        
-        # Padronização dos dados com a função clean_text
-        df_ibama_clean = df_ibama_prod.copy()
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].apply(clean_text)
-        df_ibama_clean['mv.nom_pessoa'] = df_ibama_clean['mv.nom_pessoa'].apply(clean_text)
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].str.replace(
-            r"SANT'? ?ANA DO LIVRAMENTO", "SANTANA DO LIVRAMENTO", regex=True
-            )
-        df_ibama_clean['mv.nom_municipio'] = df_ibama_clean['mv.nom_municipio'].str.replace(
-            r"PRESIDENTE CASTELLO BRANCO", "PRESIDENTE CASTELO BRANCO", regex=True
-            )
-        
-        #vou pegar apenas os anos de 17 até 20
-        df_ibama_clean_17_20 = df_ibama_clean.loc[df_ibama_clean['num_ano']<2021] 
-        
-        # Salva o resultado
-        output_file = os.path.join(processed_dir, 'DadosProduçãoTratadoV1.csv')
-        df_ibama_clean_17_20.to_csv(output_file, index=False, encoding='utf-8') #Remove índices
-        
-        return df_ibama_clean_17_20
-        
-    # Caso dê erro, informa ao usuário
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Arquivo RAPP.xlsx não encontrado em {raw_dir}")
-    except Exception as e:
-        raise Exception(f"Erro ao processar dados: {str(e)}")
-        
-        
-def ibama_production_data_v2(repo_path):
-    """
-    Processa dados de produção do IBAMA a partir de arquivos XLSX, limpando e
-    consolidando os dados.
-    V2 - Base de dados de 2021 até 2024 (+1 ano em relação ao v1, mas começa depois)
-    vou pegar inteiro p mesclar com o outro
-    
-    Parâmetros:
-        repo_path (str): Caminho raiz do repositório onde estão as pastas inputs
-        /outputs
-    
-    Retorna:
-        pd.DataFrame: DataFrame com os dados processados
-        str: Caminho do arquivo CSV salvo
-    """
-
-    # Define os caminhos para as pastas de dados brutos e processados
-    raw_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    processed_dir = os.path.join(repo_path, 'inputs','DadosProduçãoIndustrial')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    try:
-        # Caminho completo do arquivo
-        file_path = os.path.join(raw_dir, 'DadosProduçãoBrutoV2.xlsx')
-        
-        # Lê as duas abas do Excel
-        df_ibama_prod = pd.read_excel(file_path, sheet_name=0, dtype={'mv.num_cpf_cnpj': str}) # 0 para a primeira aba
-                
-        # Padronização dos dados com a função clean_text
-        df_ibama_clean_21_24 = df_ibama_prod.copy()
-        df_ibama_clean_21_24['mv.nom_municipio'] = df_ibama_clean_21_24['mv.nom_municipio'].apply(clean_text)
-        df_ibama_clean_21_24['mv.nom_pessoa'] = df_ibama_clean_21_24['mv.nom_pessoa'].apply(clean_text)
-        df_ibama_clean_21_24['mv.nom_municipio'] = df_ibama_clean_21_24['mv.nom_municipio'].str.replace(
-            r"SANT'? ?ANA DO LIVRAMENTO", "SANTANA DO LIVRAMENTO", regex=True
-            )
-        df_ibama_clean_21_24['mv.nom_municipio'] = df_ibama_clean_21_24['mv.nom_municipio'].str.replace(
-            r"PRESIDENTE CASTELLO BRANCO", "PRESIDENTE CASTELO BRANCO", regex=True
-            )
-
-        # Salva o resultado
-        output_file = os.path.join(processed_dir, 'DadosProduçãoTratadoV2.csv')
-        df_ibama_clean_21_24.to_csv(output_file, index=False, encoding='utf-8') #Remove índices
-        
-        return df_ibama_clean_21_24
-        
-    # Caso dê erro, informa ao usuário
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Arquivo RAPP.xlsx não encontrado em {raw_dir}")
-    except Exception as e:
-        raise Exception(f"Erro ao processar dados: {str(e)}")
-        
-def import_products_code(repo_path):
-    '''
-    Importa, limpa e exporta a tabela de códigos de produtos do IBGE (PRODLIST).
-    
-    Verificar online: https://servicos.ibama.gov.br/ctfcd/manual/html/lista_produtos.htm
-    Baixar excel: https://www.ibge.gov.br/estatisticas/metodos-e-classificacoes/classificacoes-e-listas-estatisticas/9153-lista-de-produtos-da-industria.html
-   
-    A função lê um arquivo Excel, remove cabeçalhos repetidos e linhas
-    indesejadas, e retorna um DataFrame pronto para uso.
-
-    Parâmetros:
-        repo_path (str): Caminho para a pasta raiz do projeto.
-
-    Retorna:
-        pd.DataFrame: Tabela de códigos de produtos limpa.   
-    '''
-    raw_dir = os.path.join(repo_path, 'inputs','MaterialBaixado')
-    processed_dir = os.path.join(repo_path, 'outputs')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    # Caminho do arquivo
-    xlsx_path = os.path.join(raw_dir,'CódigosProdutosIBGE.xlsx')
-
-    # Lê o CSV com header na linha 1 (índice 1)
-    cod_produto = pd.read_excel(xlsx_path, header=2, dtype={'PRODLIST': str})
-    # Remove linhas com 'PRODLIST' ou NaN na coluna 'PRODLIST'
-    cod_produto = cod_produto[~cod_produto['PRODLIST'].isin(['PRODLIST'])]
-    cod_produto = cod_produto[~cod_produto['PRODLIST'].astype(str).str.startswith('CNAE')]
-    cod_produto = cod_produto.dropna(subset=['PRODLIST'])
-
-    # Reinicia o índice
-    cod_produto.reset_index(drop=True, inplace=True)
-    
-    output_file = os.path.join(processed_dir,'CodProdutoParaClassificar.xlsx')
-    cod_produto.to_excel(output_file, index=False)
-    
-    return cod_produto
-
-def import_treat_export_food_code(repo_path):
-    '''
-    Importa e limpa a tabela de códigos de produtos do IBGE (PRODLIST)
-    APENAS PRODUTOS ALIMENTÍCIOS (escopo inicial do TCC).
-    
-    Verificar online: https://servicos.ibama.gov.br/ctfcd/manual/html/lista_produtos.htm
-    Baixar excel: https://www.ibge.gov.br/estatisticas/metodos-e-classificacoes/classificacoes-e-listas-estatisticas/9153-lista-de-produtos-da-industria.html
-   
-    A função lê um arquivo Excel, remove cabeçalhos repetidos e linhas
-    indesejadas, e retorna um DataFrame pronto para uso.
-
-    Parâmetros:
-        repo_path (str): Caminho para a pasta raiz do projeto.
-
-    Retorna:
-        pd.DataFrame: Tabela de códigos de produtos limpa.   
-    '''
-    raw_dir = os.path.join(repo_path, 'inputs','MaterialBaixado')
-    processed_dir = os.path.join(repo_path, 'outputs')
-    
-    # Garante que as pastas de destino existam; se não, elas são criadas
-    os.makedirs(raw_dir, exist_ok=True)
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    # Caminho do arquivo
-    xlsx_path = os.path.join(raw_dir,'CódigosProdutosIBGE.xlsx')
-
-    # Lê o CSV com header na linha 1 (índice 1)
-    cod_produto = pd.read_excel(xlsx_path, header=2, dtype={'PRODLIST': str})
-    # Remove linhas com 'PRODLIST' ou NaN na coluna 'PRODLIST'
-    cod_produto = cod_produto[~cod_produto['PRODLIST'].isin(['PRODLIST'])]
-    cod_produto = cod_produto[~cod_produto['PRODLIST'].astype(str).str.startswith('CNAE')]
-    cod_produto = cod_produto.dropna(subset=['PRODLIST'])
-
-    # Reinicia o índice
-    cod_produto.reset_index(drop=True, inplace=True)
-       
-    return cod_produto
-
-#%% Funções para mesclar e filtrar base de dados
-
-def merge_cnpj_prod(cnpj,prod):
-    '''
-    
-    Processa dados de atividade por CNPJ e Município para obter coordenada,
-    código de atividade e código de categoria; Remove os que são CPF   
-    
-    Parâmetros: 
-        - cnpj, prod = Base de dados de CNPJ e de Produção do ibama, e baixado pelas funções:
-            -download_ibama_ctf_data
-            -ibama_production_data
-            
-     Retorna:
-         pd.DataFrame: DataFrame com os dados concatenados
-         
-    '''
-    
-    # Uma mesma indústria com o mesmo cnpj e lat lon produz produtos diferentes
-    # Ou seja, multiplos codigo de categoria e codigo de atividade
-    # Por isso, fiz um groupby onde os códigos de categoria e atividade viram uma lista para um mesmo CNPJ
-    # acabei não utilizando estes códigos, mas mantive por segurança
-    cnpj = cnpj.groupby(['CNPJ', 'MUNICIPIO', 'LATITUDE', 'LONGITUDE','ESTADO','SITUACAO CADASTRAL']).agg({
-        'CODIGO DA CATEGORIA': list,
-        'CODIGO DA ATIVIDADE': list,
-        'ANO_INICIO': list,
-        'ANO_FIM': list
-    }).reset_index()
-    
-    
-    # Fazer o merge com o df_ibama (sem duplicar linhas)
-    df_ibama_completo = pd.merge(
-        left=cnpj, #tabela unida a esqueda
-        right=prod, #tabela unida a direita
-        left_on=['CNPJ', 'MUNICIPIO'], #chaves da tabela a esqueda
-        right_on=['mv.num_cpf_cnpj', 'mv.nom_municipio'], #chaves da tabela a direita
-        how='right', # todas as linhas da tabela da direita (prod) serão mantidas.
-        indicator=True #informa a condição da mesclagem (right_only - não estava em CNPJ)
-    )
-    
-       
-    return df_ibama_completo
-
-def conecta_ibama_ef(df_ibama, df_ef, df_conector):
-    # Garantir que os códigos estejam no mesmo tipo
-    df_conector[['PRODLIST', 'NFR', 'Table']] = df_conector[['PRODLIST', 'NFR', 'Table']].astype(str)
-    df_ibama['cod_produto'] = df_ibama['cod_produto'].astype(str)
-    
-    # Mesclar df_ibama com o conector via código do produto
-    df_merged = df_ibama.merge(
-        df_conector[['PRODLIST', 'NFR', 'Table']],
-        left_on='cod_produto',
-        right_on='PRODLIST',
-        how='left'
-    )
-
-    # Realizar o merge com a base ef (EEA)
-    df_final = df_merged.merge(
-        df_ef,
-        left_on=['NFR', 'Table'],
-        right_on=['NFR', 'Table'],
-        how='left'
-    )
-
-    # Remover coluna auxiliar
-    #df_final = df_final.drop(columns=['PRODLIST'])
-
-    return df_final
 
 def converter_para_hl(df_conversao, qtd_produzida, unidade_medida, cod_produto=None):
     """
@@ -595,53 +45,7 @@ def converter_para_hl(df_conversao, qtd_produzida, unidade_medida, cod_produto=N
     return pd.NA
 
 
-def agrupar_e_somar_dados(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Agrupa um DataFrame por um conjunto de colunas-chave e agrega os valores.
 
-    As colunas numéricas (não presentes nas chaves de agrupamento) são somadas.
-    As colunas não numéricas são preenchidas com o primeiro valor do grupo.
-
-    Args:
-        df (pd.DataFrame): O DataFrame de entrada para ser processado.
-
-    Returns:
-        pd.DataFrame: Um novo DataFrame com os dados agrupados e agregados.
-    """
-    # 1. Define as colunas que serão a "chave" para o agrupamento
-    colunas_agrupamento = [
-        'mv.num_cpf_cnpj', 
-        'mv.nom_pessoa',
-        'mv.nom_municipio',
-        'num_ano',
-        'cod_produto',
-        'unidade_medida',
-        'sig_unidmed'
-    ]
-
-    print(f"Número de linhas antes do agrupamento: {len(df)}")
-
-    # 2. Cria dinamicamente as regras de agregação
-    # O objetivo é dizer ao pandas o que fazer com cada coluna que NÃO está no agrupamento.
-    regras_agregacao = {}
-    colunas_para_agregar = [col for col in df.columns if col not in colunas_agrupamento]
-
-    for coluna in colunas_para_agregar:
-        # Verifica se a coluna contém dados numéricos (int, float, etc.)
-        if pd.api.types.is_numeric_dtype(df[coluna]):
-            regras_agregacao[coluna] = 'sum'  # Se for numérica, some
-        else:
-            regras_agregacao[coluna] = 'first' # Se não for, pegue o primeiro valor
-
-    # 3. Executa o agrupamento e a agregação
-    # .groupby() cria os grupos
-    # .agg() aplica as regras que definimos
-    # .reset_index() transforma as colunas de agrupamento de volta em colunas normais
-    df_agrupado = df.groupby(colunas_agrupamento).agg(regras_agregacao).reset_index()
-
-    print(f"Número de linhas após o agrupamento: {len(df_agrupado)}")
-    
-    return df_agrupado
 
 #%% Função de tratamento de outliers
 
@@ -1398,30 +802,82 @@ def tratamento_outliers_v3(
     
     # --- ETAPA 2: CORREÇÃO DE OUTLIERS (Cria prodtonhl_v3 e status_v07) ---
     print("Etapa 2: Corrigindo outliers (cria prodtonhl_v3)...")
-    
+
     df_processado['status_v07'] = 'Não Aplicável'
     df_processado['prodtonhl_v3'] = df_processado['prodtonhl_v2']
+    df_processado['flag_outlier'] = False
 
     if not df_filtrado.empty:
         df_filtrado = df_filtrado.sort_values(by=agg_cols)
-        
-        medianas_moveis = df_filtrado.groupby(group_cols)['prodtonhl_v2'].transform(lambda x: x.rolling(window=janela_movel, min_periods=1, center=True).median())
-        lim_sup, lim_inf = medianas_moveis * fator_mediana, medianas_moveis / fator_mediana
-        m_mediana = ((df_filtrado['prodtonhl_v2'] > lim_sup) | (df_filtrado['prodtonhl_v2'] < lim_inf)) & (medianas_moveis > 0)
-        
-        prod_ant = df_filtrado.groupby(group_cols)['prodtonhl_v2'].shift(1).replace(0, np.nan)
-        razao = df_filtrado['prodtonhl_v2'] / prod_ant
-        m_anual = (razao > fator_aumento_anual) | (razao < fator_reducao_anual)
-        
-        df_filtrado['flag_outlier'] = m_mediana | m_anual
+
+        # Detecção iterativa: cada passe exclui zeros e outliers já detectados da mediana,
+        # resolvendo contaminação de vizinho e medianas distorcidas por erros não detectados.
+        max_iter = 10
+        flag_outlier = pd.Series(False, index=df_filtrado.index)
+
+        for iter_n in range(max_iter):
+            # Mascara zeros e outliers anteriores para não distorcerem os limites
+            serie_calc = df_filtrado['prodtonhl_v2'].where(
+                (df_filtrado['prodtonhl_v2'] > 0) & (~flag_outlier), np.nan
+            )
+            df_filtrado['_calc'] = serie_calc
+
+            medianas_moveis = df_filtrado.groupby(group_cols)['_calc'].transform(
+                lambda x: x.rolling(window=janela_movel, min_periods=1, center=True).median()
+            )
+            lim_sup = medianas_moveis * fator_mediana
+            lim_inf  = medianas_moveis / fator_mediana
+
+            prod_ant = df_filtrado.groupby(group_cols)['_calc'].transform(lambda x: x.shift(1))
+            razao    = serie_calc / prod_ant
+
+            m_mediana = (
+                ((df_filtrado['prodtonhl_v2'] > lim_sup) | (df_filtrado['prodtonhl_v2'] < lim_inf))
+                & (medianas_moveis > 0)
+                & (df_filtrado['prodtonhl_v2'] > 0)  # zeros já são erros confirmados, não outliers
+            )
+            m_anual = (razao > fator_aumento_anual) | (razao < fator_reducao_anual)
+
+            new_flags = (m_mediana | m_anual) & (df_filtrado['status_v06'] == 'Apto para Análise')
+
+            if new_flags.equals(flag_outlier):
+                print(f"  -> Detecção estabilizou em {iter_n + 1} passada(s).")
+                break
+
+            flag_outlier = new_flags
+
+        df_filtrado.drop(columns=['_calc'], inplace=True, errors='ignore')
+        df_filtrado['flag_outlier'] = flag_outlier
         print(f"-> {df_filtrado['flag_outlier'].sum()} outliers sinalizados para correção.")
-        
+
         df_filtrado['status_v07'] = 'Valor Mantido'
 
         def _corrigir_outliers(grupo):
-            pontos_validos = grupo[~grupo['flag_outlier']]
+            pontos_validos = grupo[~grupo['flag_outlier'] & (grupo['prodtonhl_v2'] > 0)]
+            mediana_serie = pontos_validos['prodtonhl_v2'].median()
+
             for idx in grupo[grupo['flag_outlier']].index:
                 ano_outlier = grupo.loc[idx, year_col]
+                v = grupo.loc[idx, 'prodtonhl_v2']
+
+                # Zeros confirmados: viram NaN para Stage 3 interpolar
+                if v == 0:
+                    grupo.loc[idx, 'prodtonhl_v3'] = np.nan
+                    grupo.loc[idx, 'status_v07'] = 'Corrigido (Zero confirmado → NaN)'
+                    continue
+
+                # Testa fator ÷1000 e ×1000: se recoloca na faixa da série, é erro de unidade
+                if pd.notna(mediana_serie) and mediana_serie > 0:
+                    if mediana_serie / fator_mediana <= v / 1000 <= mediana_serie * fator_mediana:
+                        grupo.loc[idx, 'prodtonhl_v3'] = v / 1000
+                        grupo.loc[idx, 'status_v07'] = 'Corrigido (Erro Unidade ÷1000)'
+                        continue
+                    if mediana_serie / fator_mediana <= v * 1000 <= mediana_serie * fator_mediana:
+                        grupo.loc[idx, 'prodtonhl_v3'] = v * 1000
+                        grupo.loc[idx, 'status_v07'] = 'Corrigido (Erro Unidade ×1000)'
+                        continue
+
+                # Nenhum fator de escala encaixa → erro de digitação → interpola/extrapola/mediana
                 validos_ant = pontos_validos[pontos_validos[year_col] < ano_outlier]
                 validos_pos = pontos_validos[pontos_validos[year_col] > ano_outlier]
                 valor_sub, metodo = np.nan, ""
@@ -1429,18 +885,24 @@ def tratamento_outliers_v3(
                 if not validos_ant.empty and not validos_pos.empty:
                     p_ant, p_pos = validos_ant.iloc[-1], validos_pos.iloc[0]
                     dy, dx = p_pos['prodtonhl_v2'] - p_ant['prodtonhl_v2'], p_pos[year_col] - p_ant[year_col]
-                    if dx > 0: valor_sub, metodo = p_ant['prodtonhl_v2'] + dy * ((ano_outlier - p_ant[year_col]) / dx), "Corrigido (Interpolação)"
+                    if dx > 0:
+                        valor_sub = p_ant['prodtonhl_v2'] + dy * ((ano_outlier - p_ant[year_col]) / dx)
+                        metodo = 'Corrigido (Erro Digitação → Interpolação)'
                 elif len(validos_ant) >= 2:
                     p1, p2 = validos_ant.iloc[-1], validos_ant.iloc[-2]
                     dy, dx = p1['prodtonhl_v2'] - p2['prodtonhl_v2'], p1[year_col] - p2[year_col]
-                    if dx > 0: valor_sub, metodo = p1['prodtonhl_v2'] + (dy/dx) * (ano_outlier - p1[year_col]), "Corrigido (Extrapolação Fwd)"
+                    if dx > 0:
+                        valor_sub = p1['prodtonhl_v2'] + (dy/dx) * (ano_outlier - p1[year_col])
+                        metodo = 'Corrigido (Erro Digitação → Extrapolação Fwd)'
                 elif len(validos_pos) >= 2:
                     p1, p2 = validos_pos.iloc[0], validos_pos.iloc[1]
                     dy, dx = p2['prodtonhl_v2'] - p1['prodtonhl_v2'], p2[year_col] - p1[year_col]
-                    if dx > 0: valor_sub, metodo = p1['prodtonhl_v2'] + (dy/dx) * (ano_outlier - p1[year_col]), "Corrigido (Extrapolação Bwd)"
+                    if dx > 0:
+                        valor_sub = p1['prodtonhl_v2'] + (dy/dx) * (ano_outlier - p1[year_col])
+                        metodo = 'Corrigido (Erro Digitação → Extrapolação Bwd)'
                 else:
-                    mediana = pontos_validos['prodtonhl_v2'].median()
-                    if pd.notna(mediana): valor_sub, metodo = mediana, "Corrigido (Mediana Série - Fallback)"
+                    if pd.notna(mediana_serie):
+                        valor_sub, metodo = mediana_serie, 'Corrigido (Erro Digitação → Mediana Fallback)'
 
                 if pd.notna(valor_sub):
                     grupo.loc[idx, 'prodtonhl_v3'] = max(0, valor_sub)
@@ -1528,6 +990,10 @@ def tratamento_outliers_v3(
             df_nao_processados = df_processado[df_processado['status_v06'] != 'Apto para Análise'].copy()
             df_processado = pd.concat([df_final_preenchido, df_nao_processados], ignore_index=True)
 
+    # Linhas criadas por preenchimento não têm flag_outlier → False por padrão
+    if 'flag_outlier' in df_processado.columns:
+        df_processado['flag_outlier'] = df_processado['flag_outlier'].fillna(False)
+
     # --- [RESUMO ETAPA 3] ---
     try:
         total_s3_saida = len(df_processado)
@@ -1585,13 +1051,52 @@ def tratamento_outliers_v3(
         print(f"*** Erro ao gerar resumo GERAL: {e} ***")
     # --- [FIM RESUMO GERAL] ---
 
-    # A coluna 'flag_outlier' não é incluída intencionalmente na saída final
+    # flag_outlier incluída na saída para auditoria (True = ponto detectado como outlier no Stage 2)
     colunas_finais = [c for c in df.columns if c not in ['prodtonhl_v1', 'flag_outlier']] + \
-                     ['prodtonhl_v1', 'prodtonhl_v2', 'prodtonhl_v3', 'prodtonhl_v4', 
-                      'status_v06', 'status_v07', 'status_v08']
+                     ['prodtonhl_v1', 'prodtonhl_v2', 'prodtonhl_v3', 'prodtonhl_v4',
+                      'status_v06', 'status_v07', 'status_v08', 'flag_outlier']
     
     print("Tratamento de dados v4 concluído com sucesso!")
     # Garante que as colunas retornadas estejam na ordem correta
     colunas_existentes = [col for col in colunas_finais if col in df_processado.columns]
     
     return df_processado[colunas_existentes].sort_values(by=agg_cols).reset_index(drop=True)
+
+
+def import_treat_export_food_code(repo_path):
+    raw_dir = os.path.join(repo_path, 'inputs', 'MaterialBaixado')
+    processed_dir = os.path.join(repo_path, 'outputs')
+
+    os.makedirs(raw_dir, exist_ok=True)
+    os.makedirs(processed_dir, exist_ok=True)
+
+    xlsx_path = os.path.join(raw_dir, 'CódigosProdutosIBGE.xlsx')
+
+    cod_produto = pd.read_excel(xlsx_path, header=2, dtype={'PRODLIST': str})
+    cod_produto = cod_produto[~cod_produto['PRODLIST'].isin(['PRODLIST'])]
+    cod_produto = cod_produto[~cod_produto['PRODLIST'].astype(str).str.startswith('CNAE')]
+    cod_produto = cod_produto.dropna(subset=['PRODLIST'])
+    cod_produto.reset_index(drop=True, inplace=True)
+
+    return cod_produto
+
+
+def conecta_ibama_ef(df_ibama, df_ef, df_conector):
+    df_conector[['PRODLIST', 'NFR', 'Table']] = df_conector[['PRODLIST', 'NFR', 'Table']].astype(str)
+    df_ibama['cod_produto'] = df_ibama['cod_produto'].astype(str)
+
+    df_merged = df_ibama.merge(
+        df_conector[['PRODLIST', 'NFR', 'Table']],
+        left_on='cod_produto',
+        right_on='PRODLIST',
+        how='left'
+    )
+
+    df_final = df_merged.merge(
+        df_ef,
+        left_on=['NFR', 'Table'],
+        right_on=['NFR', 'Table'],
+        how='left'
+    )
+
+    return df_final
