@@ -19,8 +19,8 @@ import matplotlib.patheffects as PathEffects # Para contorno nos labels
 import os # Para usar o figpath
 
 plt.rcParams['font.family'] = 'Arial'
-#%% Definindo Paths e importando 
-repo_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\006.2026 - Revisão TCC'
+
+repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 figpath = os.path.join(repo_path,'figures')
 
 #importar csv com inventário

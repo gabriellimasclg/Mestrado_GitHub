@@ -17,7 +17,7 @@ plt.rcParams['font.family'] = 'Arial'
 #%% tratDados
 #fonte dos dados PIA: https://sidra.ibge.gov.br/tabela/7752
 
-repo_path = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\006.2026 - Revisão TCC'
+repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #Importei material gerado manualmente
 CodProdutoClassificadoNFR = pd.read_excel(os.path.join(repo_path,'inputs','MaterialGeradoManualmente','1_CodProdutoClassificadoNFR.xlsx'),
