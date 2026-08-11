@@ -35,7 +35,7 @@ figures = os.path.join(repopath,'figures','pt')
 #figures = os.path.join(repopath,'figures','LeoPediu')
 
 #importa inventário, definindo tipo de algumas colunas
-inv = pd.read_csv(os.path.join(inputs,'emission_total_light_v2.csv'),
+inv = pd.read_csv(os.path.join(inputs,'InventarioConcatenado.csv'),
                   dtype={'SNAP':'str',
                          'Technology':'str',
                          'Abatement':'str',
