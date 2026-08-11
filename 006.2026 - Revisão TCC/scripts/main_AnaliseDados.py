@@ -18,7 +18,7 @@ import matplotlib.colors as colors
 import matplotlib.patheffects as PathEffects # Para contorno nos labels
 import os # Para usar o figpath
 
-plt.rcParams['font.family'] = 'Arial'
+#plt.rcParams['font.family'] = 'Arial'
 
 repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 figpath = os.path.join(repo_path,'figures')
@@ -263,7 +263,9 @@ tendênciaUF = analisar_tendencia_nmvc(df, ['ESTADO'])
 
 plot_emissao(df,figpath)
 
+
 #%% Analisar emissão acumuladas por estado com tendencia
+
 
 df_emissoes_uf = (
     df.groupby('ESTADO')[
@@ -272,6 +274,7 @@ df_emissoes_uf = (
          'Emissão NMCOV CI_upper (ton)']
     ].sum()
 )
+
 
 df_emissoes_uf_tendencia = df_emissoes_uf.merge(tendênciaUF[['ESTADO','tendência']], on='ESTADO', how='left')
 
