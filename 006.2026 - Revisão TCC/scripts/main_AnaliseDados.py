@@ -839,6 +839,6 @@ plt.savefig(os.path.join(figpath,'edgar_alimentos.png'), dpi=300, bbox_inches='t
 
 plt.show()
 
+# %% Reconstruindo algumas funções para o paper
 
 
-# %%

@@ -125,7 +125,7 @@ def plot_emissao(df, path, coluna=None):
             'Emissão NMCOV CI_lower (ton)': 'sum',
             'Emissão NMCOV CI_upper (ton)': 'sum'
         })
-        
+        edg
         plt.figure(figsize=(10, 6))
         plt.plot(df_agg['num_ano'], df_agg['Emissão NMCOV (ton)'], 
                  marker='o', linestyle='-', label='Emissão de NMCOV (ton)')

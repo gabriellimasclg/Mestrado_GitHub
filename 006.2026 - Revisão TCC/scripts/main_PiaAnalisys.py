@@ -171,6 +171,15 @@ for _col in ['LATITUDE', 'LONGITUDE']:
     if df_inventario[_col].dtype == object:
         df_inventario[_col] = df_inventario[_col].str.replace(',', '.', regex=False).astype(float)
 
+
+df_pia_resumo
+
+df_pia_resumo.to_csv(
+    os.path.join(repo_path,'outputs','PIA_Tratado.csv'),
+    encoding='utf-8-sig')
+
+
+#%%
 plot_producao_empilhada(
     df_pia_resumo,
     figpath = figpath,
