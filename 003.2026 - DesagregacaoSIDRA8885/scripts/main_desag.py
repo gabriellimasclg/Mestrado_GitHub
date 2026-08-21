@@ -14,8 +14,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-repopath = r'C:\Users\glima\OneDrive\Documentos\Mestrado_GitHub\003.2026 - DesagregacaoSIDRA8885'
-
+repopath = '/home/gabriellimasclg/Documents/Códigos_GitHub/Mestrado_GitHub/003.2026 - DesagregacaoSIDRA8885/'
 
 #%% Organização dos dados do SIDRA IBGE
 
